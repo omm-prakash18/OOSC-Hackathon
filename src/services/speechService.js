@@ -1,12 +1,8 @@
 /**
  * LokVani AI — Browser-Native Web Speech API Service
- * Handles STT (Speech-to-Text) and TTS (Text-to-Speech) with multi-dialect support.
- *
- * Improvements:
- * - Fixes the Chrome/Edge getVoices() empty-list bug via voiceschanged event + caching
- * - Splits long TTS text into sentence-sized chunks queued sequentially (avoids truncation)
- * - Smarter voice selection: exact locale → language-family → default
- * - Exposes playback speed (rate) control
+ * Robust, production-grade Speech-to-Text (STT) and Text-to-Speech (TTS)
+ * with multi-clause transcript accumulation, continuous listening, silence grace timer,
+ * and safe browser auto-restart.
  */
 
 class SpeechService {
@@ -16,22 +12,45 @@ class SpeechService {
     this.synthesisSupported = 'speechSynthesis' in window;
     this.recognition = null;
 
-    // Cached voices — populated on first getVoices() call or voiceschanged event
+    // Speech accumulation buffers
+    this.finalTranscript = '';
+    this.interimTranscript = '';
+    this.isListeningActive = false;
+    this.manuallyStopped = false;
+    this.silenceTimer = null;
+    this.restartAttempts = 0;
+    this.maxRestartAttempts = 5;
+
+    // Callbacks & configuration
+    this.onResultCallback = null;
+    this.onErrorCallback = null;
+    this.onCompleteCallback = null;
+    this.currentLang = 'hi-IN';
+
+    // Cached voices
     this._cachedVoices = [];
     this._voicesLoaded = false;
 
     if (this.recognitionSupported) {
-      this.recognition = new SpeechRecognition();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = true;
+      this._initRecognition(SpeechRecognition);
     }
 
     if (this.synthesisSupported) {
       this._loadVoices();
-      // Chrome loads voices asynchronously — listen for the event
       window.speechSynthesis.onvoiceschanged = () => {
         this._loadVoices();
       };
+    }
+  }
+
+  _initRecognition(SpeechRecognitionClass) {
+    try {
+      this.recognition = new SpeechRecognitionClass();
+      this.recognition.continuous = true;
+      this.recognition.interimResults = true;
+      this.recognition.maxAlternatives = 1;
+    } catch (err) {
+      console.warn('[SpeechService] SpeechRecognition initialization failed:', err);
     }
   }
 
@@ -50,37 +69,22 @@ class SpeechService {
     return this._cachedVoices;
   }
 
-  /**
-   * Select the best available voice for a given BCP-47 locale.
-   * Priority: exact locale match → language prefix match → default
-   * @param {string} langCode  e.g. 'hi-IN'
-   */
   selectVoice(langCode) {
     const voices = this.getVoices();
     if (!voices.length) return null;
 
     const langPrefix = langCode.split('-')[0].toLowerCase();
-
-    // 1. Exact locale match
     const exact = voices.find(v => v.lang.toLowerCase() === langCode.toLowerCase());
     if (exact) return exact;
 
-    // 2. Language-family match (e.g. 'hi' for 'hi-IN', 'hi-IN-x-something')
     const family = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
     if (family) return family;
 
-    // 3. Default — let the browser decide
     return null;
   }
 
-  /**
-   * Split text into sentence-sized chunks to avoid TTS truncation.
-   * @param {string} text
-   * @returns {string[]}
-   */
   _splitIntoChunks(text) {
     if (!text) return [];
-    // Split on sentence-ending punctuation + optional whitespace
     const raw = text.split(/(?<=[।.!?])\s+/);
     const chunks = [];
     let current = '';
@@ -97,72 +101,191 @@ class SpeechService {
     return chunks.length > 0 ? chunks : [text];
   }
 
-  // ─── STT ─────────────────────────────────────────────────────────────────
+  // ─── STT (SPEECH-TO-TEXT) ────────────────────────────────────────────────
 
   /**
-   * Start listening for voice input.
-   * @param {function} onResult  Called with { transcript, isFinal }
-   * @param {function} onError   Called with error string
-   * @param {string} langCode    BCP-47 locale, e.g. 'hi-IN'
+   * Start listening for a complete sentence or thought.
+   * @param {function} onResult    Called with { transcript, finalTranscript, isFinal }
+   * @param {function} onError     Called with error message
+   * @param {function} onComplete  Called with complete captured text when finished
+   * @param {string} langCode      BCP-47 locale (e.g. 'hi-IN', 'en-IN')
    */
-  startListening(onResult, onError, langCode = 'hi-IN') {
-    if (!this.recognitionSupported) {
-      if (onError) onError(
-        'Voice recognition not supported in this browser. Please use Chrome or Edge, or use Demo Presets.'
-      );
+  startListening(onResult, onError, onComplete, langCode = 'hi-IN') {
+    if (!this.recognitionSupported || !this.recognition) {
+      if (onError) onError('Voice recognition not supported in this browser. Please use Chrome or Edge.');
       return;
     }
 
+    // Reset session state
+    this.finalTranscript = '';
+    this.interimTranscript = '';
+    this.isListeningActive = true;
+    this.manuallyStopped = false;
+    this.restartAttempts = 0;
+    this.onResultCallback = onResult;
+    this.onErrorCallback = onError;
+    this.onCompleteCallback = onComplete;
+    this.currentLang = langCode;
+
+    this._clearSilenceTimer();
+    this._attachRecognitionHandlers();
+
     try {
       this.recognition.lang = langCode;
-
-      this.recognition.onresult = (event) => {
-        let transcript = '';
-        let isFinal = false;
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          transcript += event.results[i][0].transcript;
-          if (event.results[i].isFinal) isFinal = true;
-        }
-        if (onResult) onResult({ transcript, isFinal });
-      };
-
-      this.recognition.onerror = (event) => {
-        console.warn('[SpeechService] STT error:', event.error);
-        if (onError && event.error !== 'no-speech') {
-          onError(`Voice recognition error: ${event.error}`);
-        }
-      };
-
-      this.recognition.onend = () => {
-        // If recognition ends without a final result (e.g. user paused), it just stops.
-        // The component handles the state based on whether transcript is present.
-      };
-
       this.recognition.start();
+      console.log(`[SpeechService] Recognition started. Language: ${langCode}`);
     } catch (err) {
-      console.error('[SpeechService] Failed to start recognition:', err);
-      if (onError) onError('Microphone access denied or busy. Please allow microphone access.');
+      // If recognition is already running, stop and retry
+      if (err.name === 'InvalidStateError') {
+        try {
+          this.recognition.stop();
+          setTimeout(() => {
+            if (this.isListeningActive) this.recognition.start();
+          }, 150);
+        } catch (_) { /* ignore */ }
+      } else {
+        console.error('[SpeechService] Start error:', err);
+        if (onError) onError('Microphone access denied or busy.');
+      }
     }
   }
 
-  stopListening() {
+  _attachRecognitionHandlers() {
+    if (!this.recognition) return;
+
+    this.recognition.onstart = () => {
+      console.log('[SpeechService] Event: onstart');
+    };
+
+    this.recognition.onresult = (event) => {
+      this.restartAttempts = 0; // Reset restart counter on active speech
+      let newlyFinalized = '';
+      let currentInterim = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const item = event.results[i];
+        const text = item[0].transcript;
+        if (item.isFinal) {
+          newlyFinalized += text + ' ';
+        } else {
+          currentInterim += text;
+        }
+      }
+
+      if (newlyFinalized) {
+        this.finalTranscript = (this.finalTranscript + ' ' + newlyFinalized).replace(/\s+/g, ' ').trim();
+        this.interimTranscript = '';
+      } else {
+        this.interimTranscript = currentInterim.trim();
+      }
+
+      const combinedTranscript = (this.finalTranscript + ' ' + this.interimTranscript).trim();
+
+      if (this.onResultCallback) {
+        this.onResultCallback({
+          transcript: combinedTranscript,
+          finalTranscript: this.finalTranscript,
+          interimTranscript: this.interimTranscript,
+          isFinal: false
+        });
+      }
+
+      // Reset 2.5-second silence grace timer whenever user speaks
+      this._resetSilenceTimer();
+    };
+
+    this.recognition.onerror = (event) => {
+      console.warn('[SpeechService] Event: onerror ->', event.error);
+      if (event.error === 'no-speech') {
+        // Safe natural silence — do not emit fatal error
+        return;
+      }
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        this.isListeningActive = false;
+        if (this.onErrorCallback) this.onErrorCallback('Microphone permission denied.');
+      }
+    };
+
+    this.recognition.onend = () => {
+      console.log('[SpeechService] Event: onend. Active:', this.isListeningActive, 'ManualStop:', this.manuallyStopped);
+
+      // If browser ended recognition automatically while user is still speaking (natural pause or Chrome limit), restart safely!
+      if (this.isListeningActive && !this.manuallyStopped) {
+        if (this.restartAttempts < this.maxRestartAttempts) {
+          this.restartAttempts++;
+          console.log(`[SpeechService] Auto-restarting recognition (attempt ${this.restartAttempts}/${this.maxRestartAttempts})...`);
+          setTimeout(() => {
+            if (this.isListeningActive && !this.manuallyStopped) {
+              try {
+                this.recognition.lang = this.currentLang;
+                this.recognition.start();
+              } catch (_) { /* ignore */ }
+            }
+          }, 200);
+          return;
+        }
+      }
+
+      // Conclude session if manually stopped or silence period expired
+      if (!this.isListeningActive || this.manuallyStopped) {
+        this._finishSession();
+      }
+    };
+  }
+
+  _resetSilenceTimer() {
+    this._clearSilenceTimer();
+    // Allow 2.5 seconds of natural pause before concluding complete thought
+    this.silenceTimer = setTimeout(() => {
+      console.log('[SpeechService] 2.5s silence grace timer elapsed. Concluding complete sentence...');
+      this.stopListeningAndSubmit();
+    }, 2500);
+  }
+
+  _clearSilenceTimer() {
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+  }
+
+  stopListeningAndSubmit() {
+    this._clearSilenceTimer();
+    this.manuallyStopped = true;
+    this.isListeningActive = false;
+
     if (this.recognition) {
-      try { this.recognition.stop(); } catch (_) { /* already stopped */ }
+      try { this.recognition.stop(); } catch (_) { /* ignore */ }
+    }
+
+    this._finishSession();
+  }
+
+  cancelListening() {
+    this._clearSilenceTimer();
+    this.manuallyStopped = true;
+    this.isListeningActive = false;
+    this.finalTranscript = '';
+    this.interimTranscript = '';
+
+    if (this.recognition) {
+      try { this.recognition.abort(); } catch (_) { /* ignore */ }
     }
   }
 
-  // ─── TTS ─────────────────────────────────────────────────────────────────
+  _finishSession() {
+    this._clearSilenceTimer();
+    const completeText = (this.finalTranscript + ' ' + this.interimTranscript).replace(/\s+/g, ' ').trim();
 
-  /**
-   * Speak text using Web SpeechSynthesis API.
-   * Long text is split into chunks and queued sequentially.
-   *
-   * @param {string} text
-   * @param {string} langCode    BCP-47 locale, e.g. 'hi-IN'
-   * @param {function} onEnd     Called when all chunks finish
-   * @param {number} rate        Playback speed (0.5–2.0); default 0.92
-   */
+    if (this.onCompleteCallback && completeText) {
+      const callback = this.onCompleteCallback;
+      this.onCompleteCallback = null; // Guard against duplicate calls
+      callback(completeText);
+    }
+  }
+
+  // ─── TTS (TEXT-TO-SPEECH) ────────────────────────────────────────────────
+
   speakText(text, langCode = 'hi-IN', onEnd = null, rate = 0.92) {
     if (!this.synthesisSupported) {
       if (onEnd) onEnd();
@@ -178,7 +301,6 @@ class SpeechService {
 
     const voice = this.selectVoice(langCode);
     const chunks = this._splitIntoChunks(text);
-
     let chunkIndex = 0;
 
     const speakNext = () => {
@@ -200,9 +322,8 @@ class SpeechService {
       };
 
       utterance.onerror = (e) => {
-        // 'interrupted' fires when user cancels — not a real error
         if (e.error !== 'interrupted') {
-          console.warn('[SpeechService] TTS error on chunk:', e.error);
+          console.warn('[SpeechService] TTS error chunk:', e.error);
         }
         if (onEnd) onEnd();
       };
@@ -219,10 +340,6 @@ class SpeechService {
     }
   }
 
-  /**
-   * Check if TTS and STT are supported.
-   * @returns {{ stt: boolean, tts: boolean }}
-   */
   getSupportStatus() {
     return {
       stt: this.recognitionSupported,

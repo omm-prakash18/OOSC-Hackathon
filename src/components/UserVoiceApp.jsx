@@ -263,11 +263,14 @@ export default function UserVoiceApp() {
     }
   }, [dialect, dialectInfo.promptName, addMessageToActiveConv, handlePlayTTS]);
 
+  const querySubmittedRef = useRef(false);
+
   const handleStartListening = useCallback(() => {
     if (isProcessing) return;
     if (isSpeaking) stopSpeaking();
     setAppState('LISTENING');
     setTranscript('');
+    querySubmittedRef.current = false;
 
     speechService.startListening(
       (r) => {
@@ -278,9 +281,10 @@ export default function UserVoiceApp() {
         setAppState('IDLE');
       },
       (capturedText) => {
-        // onEnd callback when speech recognition completes naturally
+        // Conclude voice session and process complete transcript
         setAppState('IDLE');
-        if (capturedText && capturedText.trim()) {
+        if (capturedText && capturedText.trim() && !querySubmittedRef.current) {
+          querySubmittedRef.current = true;
           handleProcessQuery(capturedText.trim());
         }
       },
@@ -289,8 +293,8 @@ export default function UserVoiceApp() {
   }, [isProcessing, isSpeaking, stopSpeaking, sttLocale, handleProcessQuery]);
 
   const handleStopListening = useCallback(() => {
-    speechService.stopListeningAndSubmit(transcript);
-  }, [transcript]);
+    speechService.stopListeningAndSubmit();
+  }, []);
 
   const handlePresetSelect = useCallback((p) => {
     if (isProcessing) return;
