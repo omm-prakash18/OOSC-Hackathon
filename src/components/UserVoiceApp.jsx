@@ -478,7 +478,7 @@ export default function UserVoiceApp() {
                   onClick={appState === 'LISTENING' ? handleStopListening : handleStartListening}
                   disabled={isProcessing}
                   className={cn(
-                    'mic-btn-mono',
+                    'mic-btn',
                     appState === 'LISTENING'  && 'listening',
                     isSpeaking                && 'speaking',
                     isProcessing              && 'processing'
