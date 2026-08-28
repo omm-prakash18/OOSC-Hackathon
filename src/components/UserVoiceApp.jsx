@@ -152,15 +152,16 @@ export default function UserVoiceApp() {
     }
   }, [activeConversation?.messages?.length]);
 
-  const dialectInfo = DIALECT_MAP[dialect] || DIALECT_MAP.hi;
-  const sttLocale   = dialectInfo.locale;
-  const ttsLocale   = dialect === 'en' ? 'en-IN' : sttLocale;
+  const activeDialectKey = (language === 'hi' && (dialect === 'en' || !dialect)) ? 'hi' : (dialect || 'hi');
+  const dialectInfo = DIALECT_MAP[activeDialectKey] || DIALECT_MAP.hi;
+  const sttLocale   = dialectInfo.locale || 'hi-IN';
+  const ttsLocale   = activeDialectKey === 'en' ? 'en-IN' : sttLocale;
   const isProcessing = appState === 'THINKING';
 
   const primaryAnswer = (r) =>
-    (dialect === 'en') ? (r?.shortAnswerEn || r?.shortAnswerHi) : (r?.shortAnswerHi || r?.shortAnswerEn);
+    (language === 'en' || activeDialectKey === 'en') ? (r?.shortAnswerEn || r?.shortAnswerHi) : (r?.shortAnswerHi || r?.shortAnswerEn);
   const detailedAnswer = (r) =>
-    (dialect === 'en') ? (r?.detailedAnswerEn || r?.detailedAnswerHi) : (r?.detailedAnswerHi || r?.detailedAnswerEn);
+    (language === 'en' || activeDialectKey === 'en') ? (r?.detailedAnswerEn || r?.detailedAnswerHi) : (r?.detailedAnswerHi || r?.detailedAnswerEn);
 
   const handlePlayTTS = useCallback((text) => {
     if (isSpeaking) {
