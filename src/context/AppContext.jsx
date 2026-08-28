@@ -4,7 +4,7 @@ import { fetchLiveWeatherData, fetchLiveMandiPrices } from '../services/realData
 const AppContext = createContext();
 
 export function AppProvider({ children }) {
-  const [activeTab, setActiveTab] = useState('home'); // 'home' | 'auth' | 'voice' | 'schemes' | 'intel'
+  const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'home' | 'auth' | 'schemes' | 'intel'
   const [language, setLanguage] = useState(() =>
     localStorage.getItem('lokvani_language') || 'en'
   );

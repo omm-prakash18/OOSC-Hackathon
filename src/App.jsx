@@ -25,13 +25,7 @@ function MainContent() {
     return <AuthPage />;
   }
 
-  // Profile Detail Completion Gate:
-  // If signed in, but profile is incomplete and user tries to access feature tabs, redirect to dashboard to fill details
-  const isFeatureTab = ['voice', 'schemes', 'intel'].includes(activeTab);
-  const isProfileIncomplete = isSignedIn && (!userProfile || !userProfile.fullName || !userProfile.fullName.trim());
-  if (isFeatureTab && isProfileIncomplete) {
-    return <Dashboard />;
-  }
+
 
   return (
     <main className="relative z-10" style={{ minHeight: 'calc(100vh - 140px)' }}>
