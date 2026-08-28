@@ -17,8 +17,8 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
 import DistressCard from './DistressCard';
+import AgriculturalModelsPanel from './AgriculturalModelsPanel';
 import ConversationSidebar from './chat/ConversationSidebar';
 
 // ─── Dialect Map ────────────────────────────────────────────────────────────
@@ -573,6 +573,9 @@ export default function UserVoiceApp() {
 
         {/* Skeleton while processing */}
         {isProcessing && <SkeletonCard />}
+
+        {/* ── Interactive Agricultural ML Models Panel ── */}
+        <AgriculturalModelsPanel language={language} />
 
         {/* ── Distress Prediction Module Card ── */}
         <div className="mb-4">
