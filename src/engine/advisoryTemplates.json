@@ -1,0 +1,18 @@
+{
+  "rainfall": {
+    "hi": "कम बारिश से फसल बचाने के लिए हल्की शाम की सिंचाई करें और खेत में नमी बनाए रखें। नजदीकी कृषि केंद्र से ड्रिप सिंचाई सहायता की सलाह लें।",
+    "en": "To protect crops from low rainfall, apply light evening irrigation to preserve soil moisture. Consult the nearest agriculture center for drip irrigation support."
+  },
+  "price": {
+    "hi": "मंडी में भाव कम होने के कारण फसल को तुरंत बेचने के बजाय पास के सरकारी गोदाम (वेयरहाउस) में सुरक्षित रखें और 0% ब्याज वाली वेयरहाउस रिसीप्ट लोन योजना का लाभ उठाएं।",
+    "en": "Due to lower Mandi prices, store produce in a local warehouse rather than distress selling immediately. Explore warehouse receipt finance options."
+  },
+  "loan": {
+    "hi": "किसान क्रेडिट कार्ड (KCC) लोन की अंतिम तिथि पास है। समय पर ब्याज छूट (Prompt Repayment Subvention) का लाभ उठाने के लिए बैंक में नवीनीकरण की बात करें।",
+    "en": "KCC loan repayment date is near. Speak with your bank regarding timely repayment interest subvention benefits."
+  },
+  "combined": {
+    "hi": "मौसम की मार और बाजार भाव में गिरावट दोनों एक साथ हैं। कृपया अपनी फसल की जानकारी नजदीकी कृषि सखी या किराना ट्रस्ट नोड पर दर्ज कराकर राहत योजना की मदद लें।",
+    "en": "Both low rainfall and price drops are impacting your crop simultaneously. Contact your local Kirana Trust Node for verification and scheme support."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "W_RAIN": 0.4,
+  "W_PRICE": 0.25,
+  "K_INTERACT": 0.15,
+  "PROXIMITY_K": 15,
+  "V_K": 0.5,
+  "ADVISORY_THRESHOLD": 35,
+  "URGENT_THRESHOLD": 65
+}
