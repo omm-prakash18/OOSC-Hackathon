@@ -8,11 +8,18 @@ import { QueryLog } from './db/models/QueryLog.js';
 import { TrustReview } from './db/models/TrustReview.js';
 import { CommunityIntelModel } from './db/models/CommunityIntel.js';
 import { SchemeApplication } from './db/models/SchemeApplication.js';
+import { SoilModelRecord } from './db/models/SoilModelRecord.js';
+import { CropPredictionRecord } from './db/models/CropPredictionRecord.js';
+import { DistressRecord } from './db/models/DistressRecord.js';
 import { sendGrievanceEmail, generateComplaintId, getGrievanceEmail, loadDiskEnv } from './db/grievanceMailer.js';
 import { processVoiceQuery } from './src/services/geminiService.js';
 import { geminiRotator } from './src/services/geminiKeyRotator.js';
 import { fetchLiveWeatherData, fetchLiveMandiPrices } from './src/services/realDataService.js';
 import { processUserSpeechQuery } from './src/services/aiCoreEngine.js';
+import { processOrchestratedQuery } from './src/services/aiOrchestrator.js';
+import * as soilModelService from './src/services/soilModelService.js';
+import * as cropModelService from './src/services/cropModelService.js';
+import { calculateDistressScore } from './src/engine/distressEngine.js';
 
 // Input sanitizer: strip control chars, cap at 500 chars
 function sanitizeInput(text) {
@@ -217,7 +224,102 @@ app.get('/api/trust/pending', async (req, res) => {
   }
 });
 
-// 4. Submit Kirana Operator Verification (POST /api/trust/verify)
+// 5. Soil ML Model Prediction Endpoint (POST /api/soil/predict)
+app.post('/api/soil/predict', async (req, res) => {
+  try {
+    const { nitrogen, phosphorus, potassium, ph, temperature, humidity, soilType, userLocation } = req.body;
+    const result = soilModelService.predict({ nitrogen, phosphorus, potassium, ph, temperature, humidity, soilType });
+
+    if (result.status === 'SUCCESS' && isMongoDBConnected()) {
+      try {
+        await SoilModelRecord.create({
+          userId: req.body.userId || 'anonymous',
+          userLocation: userLocation || 'Azamgarh, UP',
+          soilType: result.prediction.soilType,
+          nitrogen: Number(nitrogen || 50),
+          phosphorus: Number(phosphorus || 40),
+          potassium: Number(potassium || 35),
+          ph: Number(ph || 6.8),
+          suitabilityScore: result.prediction.suitabilityScore,
+          fertilityStatus: result.prediction.fertilityStatus,
+          recommendedFertilizer: result.prediction.recommendedFertilizer,
+          dosageAdvisoryEn: result.prediction.dosageAdvisoryEn,
+          dosageAdvisoryHi: result.prediction.dosageAdvisoryHi,
+          reliability: result.reliability
+        });
+      } catch (dbErr) {
+        console.warn('[SoilModelRecord DB Save Warning]:', dbErr.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    console.error('[API /api/soil/predict Error]:', err);
+    return res.status(500).json({ error: 'Soil ML model processing error' });
+  }
+});
+
+// 6. Crop ML Model Prediction Endpoint (POST /api/crop/predict)
+app.post('/api/crop/predict', async (req, res) => {
+  try {
+    const { soilType, ph, temperature, nitrogen, phosphorus, potassium, userLocation } = req.body;
+    const result = cropModelService.predict({ soilType, ph, temperature, nitrogen, phosphorus, potassium });
+
+    if (result.status === 'SUCCESS' && isMongoDBConnected()) {
+      try {
+        await CropPredictionRecord.create({
+          userId: req.body.userId || 'anonymous',
+          userLocation: userLocation || 'Azamgarh, UP',
+          primaryCrop: result.prediction.primaryCrop,
+          primaryCropNameHi: result.prediction.primaryCropNameHi,
+          suitabilityScore: result.prediction.suitabilityScore,
+          estimatedYieldTonsPerHectare: result.prediction.estimatedYieldTonsPerHectare,
+          advisoryEn: result.prediction.advisoryEn,
+          advisoryHi: result.prediction.advisoryHi,
+          topRecommendedCrops: result.prediction.topRecommendedCrops,
+          reliability: result.reliability
+        });
+      } catch (dbErr) {
+        console.warn('[CropPredictionRecord DB Save Warning]:', dbErr.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, ...result });
+  } catch (err) {
+    console.error('[API /api/crop/predict Error]:', err);
+    return res.status(500).json({ error: 'Crop ML model processing error' });
+  }
+});
+
+// 7. Distress Engine Assessment Endpoint (POST /api/distress/check)
+app.post('/api/distress/check', async (req, res) => {
+  try {
+    const { rainfallDeviationPct, priceDropPct, daysToLoanDue, cropType, cropStage, userLocation } = req.body;
+    const result = calculateDistressScore({ rainfallDeviationPct, priceDropPct, daysToLoanDue, cropType, cropStage });
+
+    if (isMongoDBConnected()) {
+      try {
+        await DistressRecord.create({
+          userId: req.body.userId || 'anonymous',
+          userLocation: userLocation || 'Azamgarh, UP',
+          score: result.score,
+          tier: result.tier,
+          reasons: result.reasons,
+          spokenReasonsHi: result.spokenReasons.hi,
+          spokenReasonsEn: result.spokenReasons.en,
+          actionableAdvisory: result.actionableAdvisory
+        });
+      } catch (dbErr) {
+        console.warn('[DistressRecord DB Save Warning]:', dbErr.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    console.error('[API /api/distress/check Error]:', err);
+    return res.status(500).json({ error: 'Distress engine calculation error' });
+  }
+});
 app.post('/api/trust/verify', async (req, res) => {
   try {
     const { queryLogId, operatorId, operatorName, action, operatorNote, modifiedShortAnswerHi, modifiedShortAnswerEn } = req.body || {};

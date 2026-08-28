@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { useAuth } from '../context/AuthContext';
-import MyApplications from './MyApplications';
 import {
   matchSchemesForProfile,
   querySchemeWithAi
@@ -23,12 +21,9 @@ import {
   MapPin,
   Sprout,
   IndianRupee,
-  ClipboardList,
-  Compass,
-  Loader2,
-  MailCheck
+  ShieldAlert
 } from 'lucide-react';
-import { DEFAULT_SLA_DAYS, DEFAULT_GRIEVANCE_EMAIL } from '../data/expandedSchemesData';
+import MyApplications from './MyApplications';
 
 const STATES_LIST = [
   'Uttar Pradesh', 'Bihar', 'Madhya Pradesh', 'Rajasthan', 'Maharashtra',
@@ -39,17 +34,6 @@ const OCCUPATIONS = [
   'Farmer', 'Agriculture Worker', 'Small Merchant', 'Artisan',
   'Worker/Laborer', 'Student', 'Unemployed', 'Senior Citizen'
 ];
-
-const CATEGORIES = [
-  'Agriculture', 'Healthcare', 'Financial Inclusion', 'Housing',
-  'Women & Child', 'Social Security', 'Education', 'State & Regional'
-];
-
-const inputCls =
-  'w-full rounded-xl border border-black/[0.1] bg-zinc-50 px-3.5 py-2.5 text-base sm:text-sm text-zinc-900 tabular-nums transition-colors duration-300 focus:bg-white focus:outline-none';
-
-const labelCls =
-  'block text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500 mb-2';
 
 export default function PublicSchemesDashboard() {
   const { language, userProfile, updateUserProfile, pendingReviewsCount } = useApp();
@@ -70,7 +54,7 @@ export default function PublicSchemesDashboard() {
   }, [userProfile]);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [activeTab, setActiveTab] = useState('matched'); // 'matched' | 'all' | 'ai_assistant'
+  const [activeTab, setActiveTab] = useState('matched'); // 'matched' | 'all' | 'ai_assistant' | 'trust_node' | 'applications'
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedScheme, setSelectedScheme] = useState(null);
@@ -80,88 +64,7 @@ export default function PublicSchemesDashboard() {
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   const matchedSchemes = matchSchemesForProfile(profile);
-  const strictlyMatchedSchemes = matchedSchemes.filter(s => s.status === 'Eligible' && s.matchScore >= 75);
-  const strongMatches = strictlyMatchedSchemes.length;
-
-  /* Close modal on Escape */
-  useEffect(() => {
-    if (!selectedScheme) return;
-    const onKey = (e) => e.key === 'Escape' && setSelectedScheme(null);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [selectedScheme]);
-
-  /* Reset apply form whenever a different scheme is opened */
-  useEffect(() => {
-    resetApplyForm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedScheme?.id]);
-
-  /* Load which schemes this user has already marked as applied */
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/applications/user/${encodeURIComponent(userId)}`)
-      .then(async res => {
-        if (!res.ok) return null;
-        const text = await res.text();
-        try { return JSON.parse(text); } catch (e) { return null; }
-      })
-      .then(json => {
-        if (!cancelled && json?.success) {
-          setAppliedSchemeIds(new Set((json.data || []).map(a => a.schemeId)));
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [userId]);
-
-  const resetApplyForm = () => {
-    setIsApplyFormOpen(false);
-    setApplyRefNo('');
-    setApplyState('idle');
-    setApplyError('');
-  };
-
-  const handleMarkApplied = async () => {
-    if (!selectedScheme) return;
-    setApplyState('saving');
-    setApplyError('');
-    try {
-      const res = await fetch('/api/applications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          userEmail: user?.email || '',
-          userName: profile.fullName,
-          schemeId: selectedScheme.id,
-          schemeNameEn: selectedScheme.title_en,
-          schemeNameHi: selectedScheme.title_hi,
-          ministryEn: selectedScheme.ministry_en,
-          applicationRefNo: applyRefNo.trim(),
-          slaDays: selectedScheme.slaDays || DEFAULT_SLA_DAYS,
-          grievanceEmail: selectedScheme.grievanceEmail || DEFAULT_GRIEVANCE_EMAIL
-        })
-      });
-      const text = await res.text();
-      let json = {};
-      try { json = JSON.parse(text); } catch (e) {}
-      if (!res.ok || !json.success) {
-        // 409 = already applied — treat as success state
-        if (res.status === 409) {
-          setAppliedSchemeIds(prev => new Set([...prev, selectedScheme.id]));
-          setApplyState('done');
-          return;
-        }
-        throw new Error(json.error || `Failed to record application (${res.status})`);
-      }
-      setAppliedSchemeIds(prev => new Set([...prev, selectedScheme.id]));
-      setApplyState('done');
-    } catch (err) {
-      setApplyError(err.message);
-      setApplyState('idle');
-    }
-  };
+  const strictlyMatchedSchemes = matchedSchemes.filter(s => s.eligible || (s.matchScore && s.matchScore >= 50));
 
   const handleProfileChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -195,73 +98,78 @@ export default function PublicSchemesDashboard() {
     return matchSearch && matchCat;
   });
 
-  const TABS = [
-    { id: 'matched', label: language === 'hi' ? 'मेरे लिए योग्य योजनाएं' : 'My Matches', icon: Award, count: strongMatches },
-    { id: 'all', label: language === 'hi' ? 'सभी सार्वजनिक योजनाएं' : 'All Schemes', icon: BookOpen },
-    { id: 'applications', label: language === 'hi' ? 'मेरे आवेदन' : 'My Applications', icon: ClipboardList },
-    { id: 'ai_assistant', label: language === 'hi' ? 'AI योजना मित्र' : 'AI Assistant', icon: Sparkles },
-  ];
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
-
-      {/* ── Page header ─────────────────────────────────────── */}
-      <header className="mb-10 flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
-        <div className="max-w-2xl">
-          <span className="inline-flex items-center gap-2 rounded-full border border-black/[0.08] bg-white/60 px-3.5 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-zinc-500">
-            <span className="h-1 w-1 rounded-full bg-emerald-700" />
-            {language === 'hi' ? 'सार्वजनिक योजना इंजन' : 'Public Scheme Intelligence'}
-          </span>
-          <h2 className="mt-5 font-condensed text-balance text-3xl font-semibold leading-[1.15] tracking-normal text-zinc-900 sm:text-[2.4rem]">
-            {language === 'hi'
-              ? 'आपके लिए कौन सी योजनाएं हैं?'
-              : 'Find every scheme you qualify for.'}
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      
+      {/* HEADER TITLE BANNER - Emerald Palette Matching Home */}
+      <div className="bg-gradient-to-r from-emerald-50 via-teal-50/60 to-amber-50/40 border border-emerald-200/80 rounded-2xl p-6 sm:p-8 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-sm">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Landmark className="w-5 h-5 text-emerald-700" />
+            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+              Public Scheme Intelligence Engine
+            </span>
+          </div>
+          <h2 className="font-heading text-2xl sm:text-3xl font-extrabold text-slate-900 leading-snug">
+            {language === 'hi' ? 'सार्वजनिक सरकारी योजनाएं एवं पात्रता डैशबोर्ड' : 'Public Government Schemes & Eligibility Portal'}
           </h2>
-          <p className="mt-4 text-pretty text-[15px] leading-relaxed text-zinc-500">
+          <p className="text-slate-600 text-sm mt-2 max-w-2xl">
             {language === 'hi'
-              ? 'अपनी जानकारी दर्ज करें और PM-Kisan, आयुष्मान भारत, PM आवास सहित सभी योजनाओं में अपनी पात्रता देखें।'
-              : 'Enter your details once — LokVani matches you against Central & State schemes, benefits and application guidelines.'}
+              ? 'अपनी व्यक्तिगत जानकारी दर्ज करें और पीएम-किसान, आयुष्मान भारत, पीएम आवास सहित सभी सरकारी योजनाओं में अपनी पात्रता प्राप्त करें।'
+              : 'Enter your personal details to automatically discover eligible Central & State schemes, benefits, and application guidelines.'}
           </p>
         </div>
 
-        <button onClick={() => setIsEditingProfile(!isEditingProfile)} className="btn-primary shrink-0 self-start sm:self-auto">
-          {isEditingProfile ? <Save size={14} strokeWidth={1.5} /> : <Edit3 size={14} strokeWidth={1.5} />}
+        <button
+          onClick={() => setIsEditingProfile(!isEditingProfile)}
+          className="btn-primary flex-shrink-0 !py-2.5 !px-5 shadow-emerald-600/20"
+        >
+          {isEditingProfile ? <Save className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
           <span>
             {isEditingProfile
-              ? (language === 'hi' ? 'संपादक बंद करें' : 'Close editor')
-              : (language === 'hi' ? 'प्रोफ़ाइल अपडेट करें' : 'Edit profile')}
+              ? (language === 'hi' ? 'प्रोफ़ाइल बंद करें' : 'Close Profile Editor')
+              : (language === 'hi' ? 'अपनी जानकारी अपडेट करें' : 'Edit Personal Profile')}
           </span>
         </button>
-      </header>
+      </div>
 
-      {/* ── Profile editor ──────────────────────────────────── */}
+      {/* 2. PERSONAL PROFILE CARD / EDIT FORM */}
       {(isEditingProfile || !profile.fullName) && (
-        <section
-          aria-label={language === 'hi' ? 'पात्रता प्रोफाइल' : 'Eligibility profile'}
-          className="mb-8 rounded-[1.75rem] bg-white p-1.5 ring-1 ring-black/[0.06] shadow-[0_32px_80px_-40px_rgba(24,24,27,0.18)]"
-        >
-          <form onSubmit={handleSaveProfile} className="rounded-[calc(1.75rem-6px)] p-7 sm:p-9">
-            <div className="mb-8 flex items-center gap-3 border-b border-black/[0.06] pb-5">
-              <User size={16} strokeWidth={1.25} className="text-zinc-400" />
-              <h3 className="font-condensed text-lg font-semibold text-zinc-900">
-                {language === 'hi' ? 'व्यक्तिगत जानकारी' : 'Personal details'}
-              </h3>
+        <div className="bg-white border-2 border-emerald-600 rounded-2xl p-6 sm:p-8 mb-8 shadow-xl shadow-emerald-500/10">
+          <div className="flex items-center gap-2.5 mb-6 border-b border-slate-100 pb-4">
+            <User className="w-5 h-5 text-emerald-700" />
+            <h3 className="text-lg font-bold text-slate-900">
+              {language === 'hi' ? 'व्यक्तिगत जानकारी एवं पात्रता प्रोफाइल' : 'Personal Details & Eligibility Profile'}
+            </h3>
+          </div>
+
+          <form onSubmit={handleSaveProfile} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Full Name</label>
+              <input
+                type="text"
+                name="fullName"
+                value={profile.fullName}
+                onChange={handleProfileChange}
+                required
+                className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+              />
             </div>
 
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <label htmlFor="pf-name" className={labelCls}>Full name</label>
-                <input id="pf-name" type="text" name="fullName" value={profile.fullName || ''} onChange={handleProfileChange} required placeholder="e.g. Ramesh Kumar" className={inputCls} />
+                <label htmlFor="pf-name" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Full name</label>
+                <input id="pf-name" type="text" name="fullName" value={profile.fullName || ''} onChange={handleProfileChange} required placeholder="e.g. Ramesh Kumar" className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white" />
               </div>
 
               <div>
-                <label htmlFor="pf-age" className={labelCls}>Age</label>
-                <input id="pf-age" type="number" name="age" value={profile.age || ''} onChange={handleProfileChange} required placeholder="e.g. 38" className={inputCls} />
+                <label htmlFor="pf-age" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Age</label>
+                <input id="pf-age" type="number" name="age" value={profile.age || ''} onChange={handleProfileChange} required placeholder="e.g. 38" className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white" />
               </div>
 
               <div>
-                <label htmlFor="pf-gender" className={labelCls}>Gender</label>
-                <select id="pf-gender" name="gender" value={profile.gender || ''} onChange={handleProfileChange} className={inputCls}>
+                <label htmlFor="pf-gender" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Gender</label>
+                <select id="pf-gender" name="gender" value={profile.gender || ''} onChange={handleProfileChange} className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
                   <option value="">Select Gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
@@ -270,39 +178,39 @@ export default function PublicSchemesDashboard() {
               </div>
 
               <div>
-                <label htmlFor="pf-state" className={labelCls}>State</label>
-                <select id="pf-state" name="state" value={profile.state || ''} onChange={handleProfileChange} className={inputCls}>
+                <label htmlFor="pf-state" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">State</label>
+                <select id="pf-state" name="state" value={profile.state || ''} onChange={handleProfileChange} className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
                   <option value="">Select State</option>
                   {STATES_LIST.map(st => <option key={st} value={st}>{st}</option>)}
                 </select>
               </div>
 
               <div>
-                <label htmlFor="pf-district" className={labelCls}>District</label>
-                <input id="pf-district" type="text" name="district" value={profile.district || ''} onChange={handleProfileChange} placeholder="e.g. Azamgarh" className={inputCls} />
+                <label htmlFor="pf-district" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">District</label>
+                <input id="pf-district" type="text" name="district" value={profile.district || ''} onChange={handleProfileChange} placeholder="e.g. Azamgarh" className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white" />
               </div>
 
               <div>
-                <label htmlFor="pf-occ" className={labelCls}>Occupation</label>
-                <select id="pf-occ" name="occupation" value={profile.occupation || ''} onChange={handleProfileChange} className={inputCls}>
+                <label htmlFor="pf-occ" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Occupation</label>
+                <select id="pf-occ" name="occupation" value={profile.occupation || ''} onChange={handleProfileChange} className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
                   <option value="">Select Occupation</option>
                   {OCCUPATIONS.map(occ => <option key={occ} value={occ}>{occ}</option>)}
                 </select>
               </div>
 
               <div>
-                <label htmlFor="pf-income" className={labelCls}>Annual household income (₹)</label>
-                <input id="pf-income" type="number" name="annualIncome" value={profile.annualIncome || ''} onChange={handleProfileChange} step="5000" placeholder="e.g. 120000" className={inputCls} />
+                <label htmlFor="pf-income" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Annual household income (₹)</label>
+                <input id="pf-income" type="number" name="annualIncome" value={profile.annualIncome || ''} onChange={handleProfileChange} step="5000" placeholder="e.g. 120000" className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white" />
               </div>
 
               <div>
-                <label htmlFor="pf-land" className={labelCls}>Land holding (acres)</label>
-                <input id="pf-land" type="number" name="landHoldingAcres" value={profile.landHoldingAcres || ''} onChange={handleProfileChange} step="0.1" placeholder="e.g. 1.8" className={inputCls} />
+                <label htmlFor="pf-land" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Land holding (acres)</label>
+                <input id="pf-land" type="number" name="landHoldingAcres" value={profile.landHoldingAcres || ''} onChange={handleProfileChange} step="0.1" placeholder="e.g. 1.8" className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white" />
               </div>
 
               <div>
-                <label htmlFor="pf-cat" className={labelCls}>Social category</label>
-                <select id="pf-cat" name="casteCategory" value={profile.casteCategory || ''} onChange={handleProfileChange} className={inputCls}>
+                <label htmlFor="pf-cat" className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Social category</label>
+                <select id="pf-cat" name="casteCategory" value={profile.casteCategory || ''} onChange={handleProfileChange} className="w-full px-3.5 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
                   <option value="">Select Category</option>
                   <option value="General">General</option>
                   <option value="OBC">OBC</option>
@@ -310,97 +218,112 @@ export default function PublicSchemesDashboard() {
                   <option value="ST">ST</option>
                 </select>
               </div>
+            </div>
 
-              <div className="flex items-center gap-2.5">
-                <input type="checkbox" id="isBpl" name="isBpl" checked={profile.isBpl} onChange={handleProfileChange} className="h-4 w-4 cursor-pointer rounded accent-zinc-900" />
-                <label htmlFor="isBpl" className="cursor-pointer text-sm font-medium text-zinc-700">Has BPL / ration card</label>
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                <input type="checkbox" id="isDisability" name="isDisability" checked={profile.isDisability} onChange={handleProfileChange} className="h-4 w-4 cursor-pointer rounded accent-zinc-900" />
-                <label htmlFor="isDisability" className="cursor-pointer text-sm font-medium text-zinc-700">Divyangjan / disability status</label>
-              </div>
-
-              <div className="flex justify-end sm:col-span-2 lg:col-span-3">
-                <button type="submit" className="btn-primary">
-                  <Save size={14} strokeWidth={1.5} />
-                  <span>{language === 'hi' ? 'सहें और देखें' : 'Save & calculate matches'}</span>
-                </button>
-              </div>
+            <div className="sm:col-span-2 lg:col-span-3 flex justify-end gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary">
+                Save & Update Eligibility Matches
+              </button>
             </div>
           </form>
-        </section>
+        </div>
       )}
 
-      {/* ── Active profile summary ──────────────────────────── */}
-      {!isEditingProfile && profile.fullName && (
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-2xl border border-black/[0.06] bg-white/70 px-5 py-4">
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] font-medium text-zinc-600">
-            <span className="flex items-center gap-1.5 text-zinc-800">
-              <User size={13} strokeWidth={1.5} className="text-zinc-400" />
-              {profile.fullName}
-              <span className="text-zinc-400">· {profile.age}, {profile.gender}</span>
+      {/* ACTIVE PROFILE SUMMARY BAR */}
+      {!isEditingProfile && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 flex flex-wrap justify-between items-center gap-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold text-emerald-800 flex items-center gap-1">
+              <User className="w-3.5 h-3.5" /> {profile.fullName || 'Citizen'} ({profile.age} yrs, {profile.gender})
             </span>
-            <span className="flex items-center gap-1.5 tabular-nums">
-              <MapPin size={13} strokeWidth={1.5} className="text-zinc-400" />
-              {profile.district}, {profile.state}
+            <span className="text-xs text-slate-600 font-medium flex items-center gap-1">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" /> {profile.district}, {profile.state}
             </span>
-            <span className="flex items-center gap-1.5 tabular-nums">
-              <Sprout size={13} strokeWidth={1.5} className="text-[#48734f]" />
-              {profile.occupation} · {profile.landHoldingAcres} acres
+            <span className="text-xs text-slate-600 font-medium flex items-center gap-1">
+              <Sprout className="w-3.5 h-3.5 text-emerald-600" /> {profile.occupation} ({profile.landHoldingAcres} Acres)
             </span>
-            <span className="flex items-center gap-1.5 tabular-nums">
-              <IndianRupee size={13} strokeWidth={1.5} className="text-[#a07a1e]" />
-              {Number(profile.annualIncome).toLocaleString('en-IN')}/yr
+            <span className="text-xs text-slate-600 font-medium flex items-center gap-1">
+              <IndianRupee className="w-3.5 h-3.5 text-amber-600" /> {Number(profile.annualIncome).toLocaleString('en-IN')}/yr
             </span>
-            {profile.isBpl && (
-              <span className="rounded-full border border-black/[0.07] bg-zinc-50 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500">
-                BPL card
-              </span>
-            )}
+            {profile.isBpl && <span className="text-xs font-bold text-amber-700">BPL Card</span>}
           </div>
 
           <button
             onClick={() => setIsEditingProfile(true)}
-            className="group flex cursor-pointer items-center gap-1.5 text-xs font-medium text-zinc-400 transition-colors duration-500 ease-premium hover:text-zinc-800"
+            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1"
           >
-            <Edit3 size={12} strokeWidth={1.5} className="transition-transform duration-500 ease-premium group-hover:-translate-y-px" />
-            Update profile
+            <Edit3 className="w-3.5 h-3.5" /> Update Profile
           </button>
         </div>
       )}
 
-      {/* ── Tabs — segmented pill control ───────────────────── */}
-      <div
-        role="tablist"
-        aria-label={language === 'hi' ? 'योजना टैब' : 'Scheme sections'}
-        className="mb-10 inline-flex max-w-full overflow-x-auto rounded-full border border-black/[0.06] bg-white p-1"
-      >
-        {TABS.map(({ id, label, icon: Icon, count }) => {
-          const active = activeTab === id;
-          return (
-            <button
-              key={id}
-              role="tab"
-              aria-selected={active}
-              onClick={() => setActiveTab(id)}
-              className={`flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-medium transition-all duration-500 ease-premium active:scale-[0.97] ${
-                active ? 'bg-zinc-900 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-900'
-              }`}
-            >
-              <Icon size={13} strokeWidth={1.5} />
-              <span>{label}</span>
-              {count > 0 && (
-                <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${active ? 'bg-white/15' : 'bg-black/[0.05]'}`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      {/* TAB NAVIGATION BUTTONS - Matched to Emerald Palette */}
+      <div className="flex border-b border-slate-200 mb-8 gap-4 sm:gap-8 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('matched')}
+          className={`flex items-center gap-2 py-3 border-b-2 text-sm sm:text-base font-bold whitespace-nowrap transition-all ${
+            activeTab === 'matched'
+              ? 'border-emerald-600 text-emerald-800 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Award className="w-5 h-5 text-emerald-700" />
+          <span>{language === 'hi' ? 'मेरे लिए योग्य योजनाएं' : 'My Matched Schemes'}</span>
+          <span className="text-xs font-bold text-emerald-800 ml-1">
+            ({matchedSchemes.filter(s => s.matchScore >= 70).length})
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('all')}
+          className={`flex items-center gap-2 py-3 border-b-2 text-sm sm:text-base font-bold whitespace-nowrap transition-all ${
+            activeTab === 'all'
+              ? 'border-emerald-600 text-emerald-800 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <BookOpen className="w-5 h-5" />
+          <span>{language === 'hi' ? 'सभी सार्वजनिक योजनाएं' : 'All Public Schemes Directory'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('ai_assistant')}
+          className={`flex items-center gap-2 py-3 border-b-2 text-sm sm:text-base font-bold whitespace-nowrap transition-all ${
+            activeTab === 'ai_assistant'
+              ? 'border-emerald-600 text-emerald-800 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Sparkles className="w-5 h-5 text-amber-500" />
+          <span>{language === 'hi' ? 'AI योजना मित्र' : 'AI Scheme Assistant'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('trust_node')}
+          className={`flex items-center gap-2 py-3 border-b-2 text-sm sm:text-base font-bold whitespace-nowrap transition-all ${
+            activeTab === 'trust_node'
+              ? 'border-red-600 text-red-600 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <ShieldAlert className="w-5 h-5 text-red-500" />
+          <span>{language === 'hi' ? 'किराना ट्रस्ट नोड समीक्षा' : 'Kirana Trust Node Queue'}</span>
+          {pendingReviewsCount > 0 && (
+            <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+              {pendingReviewsCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* ── Matched schemes ─────────────────────────────────── */}
+      {/* 3. TAB 1: MATCHED SCHEMES */}
       {activeTab === 'matched' && (
         strictlyMatchedSchemes.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-black/[0.1] bg-white p-12 text-center">
@@ -418,86 +341,95 @@ export default function PublicSchemesDashboard() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {strictlyMatchedSchemes.map(scheme => (
-              <article
+              <div
                 key={scheme.id}
-                className="group flex flex-col rounded-3xl border border-black/[0.06] bg-white p-6 transition-all duration-700 ease-premium hover:-translate-y-1 hover:border-black/[0.1] hover:shadow-[0_28px_60px_-32px_rgba(24,24,27,0.25)] sm:p-7"
+                className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow relative"
               >
-                <div className="flex-1">
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">
+                <div>
+                  <div className="flex justify-between items-start mb-3 gap-2">
+                    <span className="text-xs font-extrabold uppercase text-emerald-800 tracking-wider">
                       {scheme.category}
                     </span>
-                    <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#f4f8f2] px-2.5 py-0.5 text-[11px] font-semibold text-[#48734f] tabular-nums">
-                      <CheckCircle2 size={11} strokeWidth={1.5} />
-                      {scheme.matchScore}% {language === 'hi' ? 'योग्य' : 'Match'}
+
+                    <span className={`text-xs font-black flex items-center gap-1 ${
+                      scheme.matchScore >= 75
+                        ? 'text-emerald-600'
+                        : 'text-amber-600'
+                    }`}>
+                      <CheckCircle2 className="w-3.5 h-3.5" /> {scheme.matchScore}% Match
                     </span>
                   </div>
 
-                  <h3 className="text-balance font-condensed text-lg font-semibold leading-snug text-zinc-900">
+                  <h3 className="text-lg font-bold text-slate-900 mb-1 leading-snug">
                     {language === 'hi' ? scheme.title_hi : scheme.title_en}
                   </h3>
 
-                  <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
-                    <Landmark size={12} strokeWidth={1.5} />
+                  <p className="text-xs text-slate-500 mb-3 font-medium flex items-center gap-1">
+                    <Landmark className="w-3.5 h-3.5 text-slate-400" />
                     <span>{language === 'hi' ? scheme.ministry_hi : scheme.ministry_en}</span>
                   </p>
 
-                  <p className="mt-3 text-pretty text-sm leading-relaxed text-zinc-500">
+                  <p className="text-sm text-slate-600 leading-relaxed mb-4">
                     {language === 'hi' ? scheme.description_hi : scheme.description_en}
                   </p>
 
-                  {/* Financial Benefit */}
-                  <div className="mt-4 rounded-xl border border-black/[0.05] bg-zinc-50/80 p-3.5">
-                    <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-400">
-                      {language === 'hi' ? 'लाभ (Benefits)' : 'Benefits'}
-                    </span>
-                    <span className="mt-1 block text-xs font-semibold leading-relaxed text-zinc-800">
+                  <div className="bg-emerald-50/60 p-3 rounded-lg border border-emerald-200/80 mb-5">
+                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">BENEFITS</span>
+                    <span className="text-sm font-bold text-emerald-900">
                       {language === 'hi' ? scheme.benefits_hi : scheme.benefits_en}
                     </span>
                   </div>
                 </div>
 
-                <button onClick={() => setSelectedScheme(scheme)} className="btn-secondary mt-5 w-full">
-                  <FileText size={14} strokeWidth={1.5} />
-                  <span>{language === 'hi' ? 'दस्तावेज़ व आवेदन विवरण' : 'Documents & Process'}</span>
+                <button
+                  onClick={() => setSelectedScheme(scheme)}
+                  className="btn-secondary w-full justify-center"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span>{language === 'hi' ? 'आवश्यक दस्तावेज़ और आवेदन देखें' : 'View Requirements & Apply'}</span>
                 </button>
-              </article>
+              </div>
             ))}
           </div>
         )
       )}
 
-      {/* ── All schemes directory ───────────────────────────── */}
+      {/* 4. TAB 2: ALL SCHEMES DIRECTORY */}
       {activeTab === 'all' && (
         <div>
-          <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center">
+          {/* Filters Bar */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="relative flex-1">
-              <Search size={14} strokeWidth={1.5} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder={language === 'hi' ? 'योजना या मंत्रालय खोजें…' : 'Search scheme or ministry…'}
-                aria-label={language === 'hi' ? 'योजना खोजें' : 'Search schemes'}
+                placeholder="Search scheme name or ministry..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full rounded-full border border-black/[0.08] bg-white py-2.5 pl-10 pr-4 text-base sm:text-sm text-zinc-900 transition-colors duration-300 placeholder:text-zinc-400 focus:border-black/[0.16] focus:outline-none"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label={language === 'hi' ? 'श्रेणी फ़िल्टर' : 'Category filters'}>
-              {['All', ...CATEGORIES].map(cat => (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setSelectedCategory('All')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  selectedCategory === 'All' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                All Categories
+              </button>
+              {CATEGORIES.map(cat => (
                 <button
                   key={cat}
-                  aria-pressed={selectedCategory === cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`cursor-pointer whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-500 ease-premium active:scale-[0.96] ${
-                    selectedCategory === cat
-                      ? 'bg-zinc-900 text-white'
-                      : 'border border-black/[0.07] bg-white text-zinc-500 hover:border-black/[0.16] hover:text-zinc-800'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    selectedCategory === cat ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
-                  {cat === 'All' ? (language === 'hi' ? 'सभी' : 'All') : cat}
+                  {cat}
                 </button>
               ))}
             </div>
@@ -511,98 +443,140 @@ export default function PublicSchemesDashboard() {
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredAllSchemes.map(scheme => (
-                <article
+                <div
                   key={scheme.id}
-                  className="group flex flex-col rounded-3xl border border-black/[0.06] bg-white p-6 transition-all duration-700 ease-premium hover:-translate-y-1 hover:border-black/[0.1] hover:shadow-[0_28px_60px_-32px_rgba(24,24,27,0.25)] sm:p-7"
+                  className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between shadow-sm"
                 >
-                  <div className="flex-1">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-xs font-extrabold uppercase text-emerald-800 tracking-wider">
                         {scheme.category}
                       </span>
-                      <span className="shrink-0 rounded-full border border-black/[0.06] bg-zinc-50 px-2.5 py-0.5 text-[11px] font-medium text-zinc-500">
-                        {scheme.badge}
-                      </span>
+                      <span className="text-xs font-semibold text-slate-500">{scheme.badge}</span>
                     </div>
 
-                    <h3 className="text-balance font-condensed text-lg font-semibold leading-snug text-zinc-900">
+                    <h3 className="text-base font-bold text-slate-900 mb-2">
                       {language === 'hi' ? scheme.title_hi : scheme.title_en}
                     </h3>
 
-                    <p className="mt-3 text-pretty text-sm leading-relaxed text-zinc-500">
+                    <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                       {language === 'hi' ? scheme.description_hi : scheme.description_en}
                     </p>
                   </div>
 
-                  <button onClick={() => setSelectedScheme(scheme)} className="btn-secondary mt-5 w-full">
-                    {language === 'hi' ? 'विवरण देखें' : 'Details & documents'}
+                  <button
+                    onClick={() => setSelectedScheme(scheme)}
+                    className="btn-secondary w-full justify-center"
+                  >
+                    Details & Documents
                   </button>
-                </article>
+                </div>
               ))}
             </div>
           )}
         </div>
       )}
 
-      {/* ── AI assistant ────────────────────────────────────── */}
+      {/* 5. TAB 3: AI SCHEME ASSISTANT */}
       {activeTab === 'ai_assistant' && (
-        <div className="rounded-[1.75rem] bg-white p-1.5 ring-1 ring-black/[0.06] shadow-[0_32px_80px_-40px_rgba(24,24,27,0.18)]">
-          <div className="rounded-[calc(1.75rem-6px)] p-7 sm:p-9">
-            <div className="mb-7 flex items-start gap-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-black/[0.07] bg-zinc-50 text-zinc-700">
-                <Bot size={18} strokeWidth={1.25} />
-              </span>
-              <div>
-                <h3 className="font-condensed text-lg font-semibold text-zinc-900">
-                  {language === 'hi' ? 'AI योजना मित्र' : 'AI Scheme Mitra'}
-                </h3>
-                <p className="mt-1 max-w-lg text-pretty text-[13px] leading-relaxed text-zinc-500">
-                  Ask anything about eligibility, documents or application steps for your matched schemes.
-                </p>
-              </div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center">
+              <Bot className="w-6 h-6" />
             </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">AI Scheme Mitra (Interactive Query Assistant)</h3>
+              <p className="text-xs text-slate-500">Ask any specific question about your scheme eligibility, document requirements, or application steps.</p>
+            </div>
+          </div>
 
-            <form onSubmit={handleAiAsk} className="flex flex-col gap-3 sm:flex-row">
-              <input
-                type="text"
-                placeholder={
-                  language === 'hi'
-                    ? 'उदा: क्या मुझे 1.5 एकड़ जमीन के साथ PM Kisan योजना मिलेगी?'
-                    : 'e.g. Am I eligible for PM-Kisan with 1.8 acres in UP?'
-                }
-                aria-label={language === 'hi' ? 'अपना प्रश्न पूछें' : 'Ask your question'}
-                value={aiQuery}
-                onChange={e => setAiQuery(e.target.value)}
-                className="flex-1 rounded-2xl border border-black/[0.1] bg-zinc-50 px-5 py-3.5 text-base sm:text-sm text-zinc-900 transition-colors duration-300 placeholder:text-zinc-400 focus:bg-white focus:outline-none"
-              />
-              <button type="submit" disabled={isAiLoading || !aiQuery.trim()} className="btn-primary sm:self-start">
-                <Sparkles size={14} strokeWidth={1.5} />
-                <span>{isAiLoading ? (language === 'hi' ? 'विश्लेषण…' : 'Analyzing…') : (language === 'hi' ? 'पूछें' : 'Ask')}</span>
+          <form onSubmit={handleAiAsk} className="flex flex-col sm:flex-row gap-3 mb-6">
+            <input
+              type="text"
+              placeholder={language === 'hi' ? "उदा: क्या मुझे 1.5 एकड़ जमीन के साथ PM Kisan योजना मिलेगी?" : "e.g. Am I eligible for PM-Kisan if I own 1.8 acres in UP?"}
+              value={aiQuery}
+              onChange={e => setAiQuery(e.target.value)}
+              className="flex-1 px-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+            />
+            <button type="submit" disabled={isAiLoading} className="btn-primary !px-6">
+              {isAiLoading ? 'Analyzing...' : 'Ask AI'}
+            </button>
+          </form>
+
+          {isAiLoading && (
+            <div className="p-6 text-center text-amber-700 font-semibold text-sm animate-pulse flex items-center justify-center gap-2">
+              <Bot className="w-4 h-4 text-amber-600 animate-spin" />
+              <span>LokVani AI is processing your profile against government scheme guidelines...</span>
+            </div>
+          )}
+
+          {aiResponse && !isAiLoading && (
+            <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-6 leading-relaxed whitespace-pre-wrap text-sm text-slate-800">
+              <div className="font-bold text-emerald-800 mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" /> AI Advice Response:
+              </div>
+              {aiResponse}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 6. TAB 4: KIRANA TRUST NODE QUEUE */}
+      {activeTab === 'trust_node' && (
+        <div className="space-y-6">
+          <div className="bg-slate-900 text-white p-6 sm:p-8 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <ShieldAlert className="w-6 h-6 text-red-400" />
+                <h3 className="font-extrabold text-lg sm:text-xl text-slate-100">
+                  {language === 'hi' ? 'किराना ट्रस्ट नोड — मानव सत्यापन कतार' : 'Kirana Trust Node — Human-in-the-Loop Review Queue'}
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400 max-w-xl">
+                {language === 'hi'
+                  ? 'उच्च जोखिम वाली सलाह और संकट पूर्वाभास सूचनाओं को 1-क्लिक में सत्यापित या संशोधित करें।'
+                  : 'Review high-stakes scheme queries and urgent agricultural distress predictions before final release to farmer voice apps.'}
+              </p>
+            </div>
+            <span className="text-xs font-mono bg-red-950/80 text-red-300 border border-red-800/60 px-3 py-1.5 rounded-xl font-bold">
+              {pendingReviewsCount} Pending Items
+            </span>
+          </div>
+
+          {/* Urgent Distress Alert Queue Item */}
+          <div className="bg-gradient-to-br from-red-950/40 via-slate-900 to-slate-950 border-2 border-red-500/50 rounded-2xl p-6 text-white shadow-xl">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full bg-red-500/20 text-red-400 text-xs font-black border border-red-500/40 uppercase tracking-wider">
+                  DISTRESS_ALERT (URGENT)
+                </span>
+                <span className="text-xs text-slate-400 font-mono">Node #Azamgarh-402</span>
+              </div>
+              <span className="text-xs text-amber-400 font-bold bg-amber-950/50 px-2.5 py-1 rounded-lg border border-amber-800/50">
+                Score: 78 / 100
+              </span>
+            </div>
+            <h4 className="font-bold text-base sm:text-lg text-slate-100 mb-1">
+              {language === 'hi' ? 'सूखा एवं फसल क्षति जोखिम चेतावनी — गेहूं (फूल आने की स्थिति)' : 'Drought & Price Crash Risk Warning — Wheat (Flowering Stage)'}
+            </h4>
+            <p className="text-xs sm:text-sm text-slate-300 mb-4 leading-relaxed">
+              {language === 'hi'
+                ? 'बारिश 45% कम और मंडी भाव में 25% की गिरावट दर्ज की गई। KCC लोन की किश्त 10 दिनों में देय है।'
+                : 'Rainfall 45% below normal and Mandi price dropped by 25%. KCC loan repayment due in 10 days.'}
+            </p>
+            <div className="flex items-center justify-between pt-4 border-t border-slate-800 flex-wrap gap-3">
+              <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Tagged PENDING_TRUST_REVIEW
+              </span>
+              <button
+                onClick={() => alert(language === 'hi' ? 'सफलतापूर्वक सत्यापित और किसान ऐप पर प्रेषित।' : 'Distress alert verified and released to farmer voice app.')}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 transition shadow-lg shadow-emerald-950/40"
+              >
+                <CheckCircle2 className="w-4 h-4" /> 1-Click Approve & Verify
               </button>
-            </form>
-
-            {isAiLoading && (
-              <div className="mt-6 flex items-center gap-3 rounded-2xl border border-black/[0.05] bg-zinc-50 px-5 py-4">
-                <Bot size={15} strokeWidth={1.5} className="animate-pulse text-[#48734f]" />
-                <p className="text-sm text-zinc-500">
-                  {language === 'hi' ? 'आपकी प्रोफ़ाइल योजनाओं से मिलाई जा रही है…' : 'Checking your profile against scheme guidelines…'}
-                </p>
-              </div>
-            )}
-
-            {aiResponse && !isAiLoading && (
-              <div className="mt-6 rounded-2xl border border-black/[0.05] bg-zinc-50 p-6 sm:p-7">
-                <p className="mb-3 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-400">
-                  <Sparkles size={12} strokeWidth={1.5} className="text-[#c49a2a]" />
-                  {language === 'hi' ? 'AI सलाह' : 'AI advice'}
-                </p>
-                <p className="max-w-[68ch] whitespace-pre-wrap text-[15px] leading-relaxed text-zinc-700">
-                  {aiResponse}
-                </p>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       )}
@@ -618,141 +592,59 @@ export default function PublicSchemesDashboard() {
 
       {/* ── Scheme detail modal ─────────────────────────────── */}
       {selectedScheme && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" role="dialog" aria-modal="true">
-          <div
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm transition-opacity"
-            onClick={() => setSelectedScheme(null)}
-          />
-
-          <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-black/[0.08] bg-white p-6 shadow-2xl transition-all duration-700 ease-premium sm:p-8">
-            <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl">
+            <div className="flex justify-between items-start mb-4">
               <div>
-                <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-zinc-400">
+                <span className="text-xs font-extrabold uppercase text-emerald-800 tracking-wider">
                   {selectedScheme.category}
                 </span>
-                <h2 className="mt-1 font-condensed text-xl font-bold text-zinc-900">
+                <h2 className="text-xl font-bold text-slate-900 mt-2 mb-1">
                   {language === 'hi' ? selectedScheme.title_hi : selectedScheme.title_en}
                 </h2>
-                <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-zinc-400">
-                  <Landmark size={12} strokeWidth={1.5} />
+                <p className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                  <Landmark className="w-3.5 h-3.5 text-slate-400" />
                   <span>{language === 'hi' ? selectedScheme.ministry_hi : selectedScheme.ministry_en}</span>
                 </p>
               </div>
+
               <button
                 onClick={() => setSelectedScheme(null)}
-                aria-label={language === 'hi' ? 'बंद करें' : 'Close dialog'}
-                className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-black/[0.07] text-zinc-400 transition-all duration-500 ease-premium hover:border-black/[0.16] hover:text-zinc-800 active:scale-[0.95]"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
               >
-                <X size={14} strokeWidth={1.5} />
+                <X className="w-6 h-6" />
               </button>
             </div>
 
-            <section className="mb-6">
-              <h3 className="mb-2 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-400">Description</h3>
-              <p className="text-pretty text-sm leading-relaxed text-zinc-600">
+            <div className="mb-5">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">DESCRIPTION</h4>
+              <p className="text-sm text-slate-700 leading-relaxed">
                 {language === 'hi' ? selectedScheme.description_hi : selectedScheme.description_en}
               </p>
-            </section>
+            </div>
 
-            <section className="mb-6 rounded-2xl border border-black/[0.05] bg-zinc-50 p-5">
-              <h3 className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-400">
-                Financial benefit
-              </h3>
-              <p className="text-[15px] font-medium leading-relaxed text-zinc-800">
+            <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-xl mb-5">
+              <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-1">FINANCIAL BENEFIT</h4>
+              <p className="text-base font-bold text-slate-900">
                 {language === 'hi' ? selectedScheme.benefits_hi : selectedScheme.benefits_en}
               </p>
-            </section>
+            </div>
 
-            <section className="mb-7">
-              <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-400">
-                Required documents
-              </h3>
-              <ul className="space-y-2.5 text-sm text-zinc-600">
+            <div className="mb-6">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">REQUIRED DOCUMENTS CHECKLIST</h4>
+              <ul className="space-y-2 text-sm text-slate-700">
                 {(language === 'hi' ? selectedScheme.requiredDocuments_hi : selectedScheme.requiredDocuments_en).map((doc, idx) => (
-                  <li key={idx} className="flex items-start gap-2.5">
-                    <CheckCircle2 size={14} strokeWidth={1.5} className="mt-0.5 shrink-0 text-[#48734f]" />
+                  <li key={idx} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                     <span>{doc}</span>
                   </li>
                 ))}
               </ul>
-            </section>
+            </div>
 
-            {/* ── Mark as applied ─────────────────────────── */}
-            <section className="mb-7 rounded-2xl border border-black/[0.05] bg-zinc-50 p-5">
-              {applyState === 'done' || appliedSchemeIds.has(selectedScheme.id) ? (
-                <div className="flex items-start gap-3">
-                  <MailCheck size={16} strokeWidth={1.5} className="mt-0.5 shrink-0 text-[#48734f]" />
-                  <div>
-                    <p className="text-sm font-medium text-zinc-800">
-                      {language === 'hi' ? 'आवेदन दर्ज — ट्रैकिंग शुरू' : 'Application tracked'}
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                      {language === 'hi'
-                        ? `दिन-गणक चालू हो गया। ${selectedScheme.slaDays || DEFAULT_SLA_DAYS} दिन बीत जाने पर "मेरे आवेदन" टैब से शिकायत दर्ज कर सकते हैं।`
-                        : `Day counter started. If you haven't received the benefit within ${selectedScheme.slaDays || DEFAULT_SLA_DAYS} days, file a complaint from the “My Applications” tab.`}
-                    </p>
-                  </div>
-                </div>
-              ) : isApplyFormOpen ? (
-                <div>
-                  <p className="mb-3 text-sm font-medium text-zinc-800">
-                    {language === 'hi' ? 'आवेदन हो गया? ट्रैकिंग शुरू करें' : 'Already applied? Start tracking'}
-                  </p>
-                  <label htmlFor="apply-ref" className={labelCls}>
-                    {language === 'hi' ? 'सरकारी आवेदन संख्या (वैकल्पिक)' : 'Govt application ref no. (optional)'}
-                  </label>
-                  <input
-                    id="apply-ref"
-                    type="text"
-                    value={applyRefNo}
-                    onChange={(e) => setApplyRefNo(e.target.value)}
-                    placeholder={language === 'hi' ? 'जैसे: PMK/2026/123456' : 'e.g. PMK/2026/123456'}
-                    maxLength={100}
-                    className={`${inputCls} mb-4`}
-                  />
-                  {applyError && (
-                    <p className="mb-3 text-xs font-medium text-red-600">{applyError}</p>
-                  )}
-                  <div className="flex gap-2.5">
-                    <button
-                      onClick={handleMarkApplied}
-                      disabled={applyState === 'saving'}
-                      className="btn-primary inline-flex items-center gap-2"
-                    >
-                      {applyState === 'saving' && <Loader2 size={14} strokeWidth={1.5} className="animate-spin" />}
-                      <span>{language === 'hi' ? 'हाँ, मैंने आवेदन किया' : 'Yes, I applied'}</span>
-                    </button>
-                    <button onClick={resetApplyForm} className="btn-secondary">
-                      {language === 'hi' ? 'रद्द करें' : 'Cancel'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-zinc-800">
-                      {language === 'hi' ? 'पोर्टल पर आवेदन किया?' : 'Applied on the portal?'}
-                    </p>
-                    <p className="mt-1 max-w-[46ch] text-xs leading-relaxed text-zinc-500">
-                      {language === 'hi'
-                        ? 'ट्रैकिंग शुरू करें — SLA बीतने पर सीधे विभाग को शिकायत भेजें।'
-                        : 'Mark it to start the day counter — complain directly if the SLA passes.'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setIsApplyFormOpen(true)}
-                    className="btn-secondary shrink-0"
-                  >
-                    <CheckCircle2 size={14} strokeWidth={1.5} />
-                    <span>{language === 'hi' ? 'मैंने आवेदन किया' : 'I Applied ✓'}</span>
-                  </button>
-                </div>
-              )}
-            </section>
-
-            <div className="flex justify-end gap-3 border-t border-black/[0.06] pt-5">
+            <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
               <button onClick={() => setSelectedScheme(null)} className="btn-secondary">
-                {language === 'hi' ? 'बंद करें' : 'Close'}
+                Close
               </button>
               <a
                 href={selectedScheme.officialPortalUrl}
@@ -760,8 +652,8 @@ export default function PublicSchemesDashboard() {
                 rel="noopener noreferrer"
                 className="btn-primary"
               >
-                <span>{language === 'hi' ? 'आधिकारिक पोर्टल' : 'Official portal'}</span>
-                <ExternalLink size={14} strokeWidth={1.5} />
+                <span>Official Apply Portal</span>
+                <ExternalLink className="w-4 h-4" />
               </a>
             </div>
           </div>
