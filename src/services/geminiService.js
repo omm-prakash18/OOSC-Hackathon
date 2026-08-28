@@ -96,3 +96,10 @@ export async function processVoiceQuery(queryText, communityIntel = [], weatherD
 
   throw new Error('AI service temporarily unavailable. Please try again in a moment.');
 }
+
+/**
+ * Low-level Rotated Gemini Response Generator for AI Orchestrator
+ */
+export async function getRotatedGeminiResponse(promptText) {
+  return await geminiRotator.executeWithRotation("You are LokVani AI agricultural expert assistant.", promptText);
+}

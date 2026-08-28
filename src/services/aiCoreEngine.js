@@ -232,3 +232,26 @@ function extractGeneralTopic(text) {
     .trim();
   return clean.length > 2 ? clean : text;
 }
+
+/**
+ * RAG database lookup for scheme and agricultural queries
+ */
+export function queryDatabaseRAG(queryText) {
+  if (!queryText || typeof queryText !== 'string') return null;
+  const text = queryText.toLowerCase();
+
+  if (Array.isArray(GOVT_SCHEMES)) {
+    for (const scheme of GOVT_SCHEMES) {
+      const titleMatch = scheme.name && text.includes(scheme.name.toLowerCase());
+      const queryMatch = scheme.spokenQuery && text.includes(scheme.spokenQuery.toLowerCase());
+      if (titleMatch || queryMatch) {
+        return {
+          title: scheme.name,
+          solution_en: scheme.ideal_ai_answer_en || scheme.benefits || 'Government scheme details available.',
+          solution_hi: scheme.ideal_ai_answer_hi || scheme.benefits || 'सरकारी योजना विवरण उपलब्ध हैं।'
+        };
+      }
+    }
+  }
+  return null;
+}
