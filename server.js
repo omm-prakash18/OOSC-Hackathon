@@ -100,11 +100,12 @@ app.get('/api/health', (req, res) => {
 // 2. Process Voice Query (POST /api/query)
 app.post('/api/query', async (req, res) => {
   try {
-    const { transcribed_text, user_location, userId, userEmail, userName, dialect } = req.body || {};
+    const { transcribed_text, transcribedText, user_location, userId, userEmail, userName, dialect } = req.body || {};
+    const rawText = transcribed_text || transcribedText;
 
-    const safeText = sanitizeInput(transcribed_text);
+    const safeText = sanitizeInput(rawText);
     if (!safeText) {
-      return res.status(400).json({ error: 'Missing or invalid transcribed_text (max 500 chars).' });
+      return res.status(400).json({ error: 'Missing or invalid transcribed_text / transcribedText (max 500 chars).' });
     }
 
     // Fetch live Mandi prices from Govt API
