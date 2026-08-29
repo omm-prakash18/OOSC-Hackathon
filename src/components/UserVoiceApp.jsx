@@ -351,6 +351,39 @@ export default function UserVoiceApp() {
     }
   }, [dialectInfo.promptName, addMessageToActiveConv, handlePlayTTS, activeConversation?.messages, user?.uid, userProfile?.fullName]);
 
+  const querySubmittedRef = useRef(false);
+
+  const handleStartListening = useCallback(() => {
+    if (isProcessing) return;
+    if (isSpeaking) stopSpeaking();
+    setAppState('LISTENING');
+    setTranscript('');
+    querySubmittedRef.current = false;
+
+    speechService.startListening(
+      (r) => {
+        setTranscript(r.transcript);
+      },
+      (e) => {
+        console.warn('[UserVoiceApp] STT Error:', e);
+        setAppState('IDLE');
+      },
+      (capturedText) => {
+        // Conclude voice session and process complete transcript
+        setAppState('IDLE');
+        if (capturedText && capturedText.trim() && !querySubmittedRef.current) {
+          querySubmittedRef.current = true;
+          handleProcessQuery(capturedText.trim());
+        }
+      },
+      sttLocale
+    );
+  }, [isProcessing, isSpeaking, stopSpeaking, sttLocale, handleProcessQuery]);
+
+  const handleStopListening = useCallback(() => {
+    speechService.stopListeningAndSubmit();
+  }, []);
+
   const handlePresetSelect = useCallback((p) => {
     if (isProcessing) return;
     if (isSpeaking) stopSpeaking();
