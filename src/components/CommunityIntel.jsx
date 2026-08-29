@@ -45,20 +45,87 @@ import { fetchTransport, fetchStorage } from '../services/logisticsService';
 import { fetchLiveNews } from '../services/newsService';
 import LocationPrompt from './common/LocationPrompt.jsx';
 
+const DISTRICT_NEIGHBORS = {
+  // Uttar Pradesh
+  'azamgarh': ['Mau', 'Jaunpur', 'Gorakhpur', 'Ghazipur', 'Ballia', 'Ambedkar Nagar', 'Varanasi'],
+  'mau': ['Azamgarh', 'Ballia', 'Ghazipur', 'Deoria', 'Gorakhpur'],
+  'gorakhpur': ['Maharajganj', 'Deoria', 'Kushinagar', 'Sant Kabir Nagar', 'Azamgarh', 'Basti'],
+  'varanasi': ['Chandauli', 'Mirzapur', 'Jaunpur', 'Ghazipur', 'Bhadohi', 'Azamgarh'],
+  'jaunpur': ['Varanasi', 'Azamgarh', 'Sultanpur', 'Pratapgarh', 'Prayagraj', 'Ghazipur'],
+  'ghazipur': ['Varanasi', 'Ballia', 'Mau', 'Azamgarh', 'Chandauli'],
+  'ballia': ['Mau', 'Ghazipur', 'Deoria', 'Bhojpur', 'Saran'],
+  'lucknow': ['Barabanki', 'Unnao', 'Rae Bareli', 'Sitapur', 'Hardoi', 'Kanpur'],
+  'kanpur': ['Unnao', 'Kanpur Dehat', 'Fatehpur', 'Kannauj', 'Lucknow'],
+  'prayagraj': ['Kaushambi', 'Pratapgarh', 'Bhadohi', 'Mirzapur', 'Chitrakoot', 'Jaunpur'],
+  'faizabad': ['Ayodhya', 'Basti', 'Ambedkar Nagar', 'Sultanpur', 'Barabanki', 'Gonda'],
+  'ayodhya': ['Faizabad', 'Basti', 'Ambedkar Nagar', 'Sultanpur', 'Barabanki', 'Gonda'],
+  'basti': ['Sant Kabir Nagar', 'Siddharthnagar', 'Gonda', 'Faizabad', 'Gorakhpur'],
+  'agra': ['Mathura', 'Firozabad', 'Hathras', 'Etawah', 'Bharatpur'],
+  'meerut': ['Ghaziabad', 'Hapur', 'Muzaffarnagar', 'Baghpat', 'Bulandshahr'],
+  'bareilly': ['Badaun', 'Pilibhit', 'Shahjahanpur', 'Rampur'],
+  'aligarh': ['Mathura', 'Hathras', 'Bulandshahr', 'Kasganj'],
+
+  // Bihar
+  'patna': ['Vaishali', 'Saran', 'Bhojpur', 'Jehanabad', 'Nalanda', 'Samastipur'],
+  'muzaffarpur': ['Vaishali', 'Samastipur', 'Darbhanga', 'Sitamarhi', 'East Champaran'],
+  'gaya': ['Jehanabad', 'Aurangabad', 'Nawada', 'Chatra', 'Patna'],
+  'bhagalpur': ['Banka', 'Munger', 'Katihar', 'Khagaria', 'Purnia'],
+  'darbhanga': ['Madhubani', 'Samastipur', 'Muzaffarpur', 'Saharsa'],
+  'purnia': ['Katihar', 'Araria', 'Kishanganj', 'Madhepura', 'Bhagalpur'],
+  'samastipur': ['Muzaffarpur', 'Darbhanga', 'Begusarai', 'Vaishali', 'Patna'],
+
+  // Madhya Pradesh
+  'indore': ['Ujjain', 'Dewas', 'Dhar', 'Khargone', 'Khandwa'],
+  'bhopal': ['Sehore', 'Raisen', 'Rajgarh', 'Vidisha', 'Hoshangabad'],
+  'ujjain': ['Indore', 'Dewas', 'Ratlam', 'Shajapur', 'Agar Malwa'],
+  'jabalpur': ['Katni', 'Seoni', 'Mandla', 'Narsinghpur', 'Damoh'],
+  'gwalior': ['Morena', 'Bhind', 'Datia', 'Shivpuri'],
+
+  // Maharashtra
+  'pune': ['Satara', 'Ahmednagar', 'Solapur', 'Thane', 'Raigad'],
+  'nashik': ['Ahmednagar', 'Dhule', 'Jalgaon', 'Aurangabad', 'Palghar'],
+  'nagpur': ['Wardha', 'Bhandara', 'Amravati', 'Chandrapur', 'Gondia'],
+  'aurangabad': ['Jalna', 'Ahmednagar', 'Nashik', 'Beed', 'Jalgaon'],
+  'kolhapur': ['Sangli', 'Satara', 'Ratnagiri', 'Belgaum'],
+
+  // Rajasthan
+  'jaipur': ['Dausa', 'Sikar', 'Tonk', 'Ajmer', 'Alwar', 'Nagaur'],
+  'kota': ['Bundi', 'Baran', 'Jhalawar', 'Sawai Madhopur', 'Chittorgarh'],
+  'jodhpur': ['Nagaur', 'Pali', 'Barmer', 'Jaisalmer', 'Bikaner'],
+  'bikaner': ['Sriganganagar', 'Hanumangarh', 'Churu', 'Nagaur', 'Jodhpur'],
+
+  // Punjab & Haryana
+  'ludhiana': ['Jalandhar', 'Moga', 'Barnala', 'Fatehgarh Sahib', 'Rupnagar'],
+  'amritsar': ['Tarn Taran', 'Gurdaspur', 'Kapurthala'],
+  'karnal': ['Kurukshetra', 'Kaithal', 'Panipat', 'Yamunanagar', 'Jind'],
+  'hisar': ['Fatehabad', 'Jind', 'Rohtak', 'Bhiwani'],
+
+  // Gujarat
+  'ahmedabad': ['Gandhinagar', 'Kheda', 'Anand', 'Surendranagar', 'Mehsana'],
+  'surat': ['Navsari', 'Bharuch', 'Tapi', 'Valsad'],
+  'rajkot': ['Morbi', 'Surendranagar', 'Jamnagar', 'Junagadh', 'Amreli'],
+
+  // South
+  'coimbatore': ['Tiruppur', 'Erode', 'Nilgiris', 'Palakkad'],
+  'bangalore': ['Ramanagara', 'Tumkur', 'Kolar', 'Chikkaballapur', 'Mandya'],
+  'hyderabad': ['Rangareddy', 'Medchal', 'Sangareddy', 'Nalgonda', 'Mahabubnagar'],
+  'vijayawada': ['Guntur', 'Krishna', 'Eluru', 'West Godavari'],
+};
+
 const STATE_NEARBY_DISTRICTS = {
-  'Uttar Pradesh': ['Azamgarh', 'Gorakhpur', 'Varanasi', 'Lucknow', 'Prayagraj', 'Kanpur', 'Faizabad', 'Basti'],
-  'Bihar': ['Patna', 'Muzaffarpur', 'Gaya', 'Bhagalpur', 'Darbhanga', 'Purnia', 'Samastipur'],
-  'Madhya Pradesh': ['Indore', 'Bhopal', 'Ujjain', 'Jabalpur', 'Gwalior', 'Hoshangabad', 'Dewas'],
-  'Maharashtra': ['Nashik', 'Pune', 'Nagpur', 'Aurangabad', 'Kolhapur', 'Solapur', 'Ahmednagar'],
-  'Rajasthan': ['Jaipur', 'Kota', 'Jodhpur', 'Bikaner', 'Sriganganagar', 'Alwar', 'Bharatpur'],
-  'Punjab': ['Ludhiana', 'Amritsar', 'Jalandhar', 'Bathinda', 'Patiala', 'Hoshiarpur'],
-  'Haryana': ['Karnal', 'Hisar', 'Rohtak', 'Ambala', 'Sirsa', 'Sonipat'],
-  'Gujarat': ['Ahmedabad', 'Surat', 'Rajkot', 'Vadodara', 'Junagadh', 'Mehsana'],
-  'West Bengal': ['Kolkata', 'Siliguri', 'Burdwan', 'Malda', 'Murshidabad', 'Hooghly'],
-  'Tamil Nadu': ['Coimbatore', 'Madurai', 'Trichy', 'Salem', 'Thanjavur', 'Erode'],
-  'Karnataka': ['Bangalore', 'Mysore', 'Hubli', 'Belgaum', 'Davangere', 'Shimoga'],
-  'Andhra Pradesh': ['Vijayawada', 'Guntur', 'Visakhapatnam', 'Kurnool', 'Tirupati', 'Rajahmundry'],
-  'Telangana': ['Hyderabad', 'Warangal', 'Nizamabad', 'Karimnagar', 'Khammam'],
+  'Uttar Pradesh': ['Azamgarh', 'Mau', 'Jaunpur', 'Gorakhpur', 'Varanasi', 'Ghazipur', 'Ballia', 'Lucknow'],
+  'Bihar': ['Patna', 'Vaishali', 'Muzaffarpur', 'Gaya', 'Samastipur', 'Bhagalpur', 'Darbhanga'],
+  'Madhya Pradesh': ['Indore', 'Ujjain', 'Dewas', 'Bhopal', 'Sehore', 'Jabalpur', 'Gwalior'],
+  'Maharashtra': ['Nashik', 'Pune', 'Satara', 'Ahmednagar', 'Nagpur', 'Aurangabad', 'Solapur'],
+  'Rajasthan': ['Jaipur', 'Dausa', 'Sikar', 'Tonk', 'Ajmer', 'Kota', 'Jodhpur'],
+  'Punjab': ['Ludhiana', 'Jalandhar', 'Moga', 'Amritsar', 'Patiala', 'Bathinda'],
+  'Haryana': ['Karnal', 'Kurukshetra', 'Panipat', 'Kaithal', 'Hisar', 'Rohtak'],
+  'Gujarat': ['Ahmedabad', 'Gandhinagar', 'Kheda', 'Surat', 'Rajkot', 'Vadodara'],
+  'West Bengal': ['Kolkata', 'Hooghly', 'Howrah', 'Burdwan', 'Nadia', 'Murshidabad'],
+  'Tamil Nadu': ['Coimbatore', 'Tiruppur', 'Erode', 'Salem', 'Madurai', 'Trichy'],
+  'Karnataka': ['Bangalore', 'Ramanagara', 'Tumkur', 'Mysore', 'Mandya', 'Hubli'],
+  'Andhra Pradesh': ['Vijayawada', 'Guntur', 'Krishna', 'Visakhapatnam', 'Kurnool', 'Tirupati'],
+  'Telangana': ['Hyderabad', 'Rangareddy', 'Medchal', 'Sangareddy', 'Warangal', 'Nizamabad'],
 };
 
 // ── Scoped styles (never touches index.css) ──────────────────────────────────
@@ -230,10 +297,22 @@ export default function CommunityIntel() {
   const userState = userLocation?.state || 'Uttar Pradesh';
 
   const nearbyLocations = useMemo(() => {
+    const normDist = userDistrict.trim().toLowerCase();
+    
+    // 1. Direct exact match in district adjacency map
+    if (DISTRICT_NEIGHBORS[normDist]) {
+      return DISTRICT_NEIGHBORS[normDist].slice(0, 6);
+    }
+    
+    // 2. Fuzzy match for composite names (e.g. "Azamgarh Sadar" -> "azamgarh")
+    const matchKey = Object.keys(DISTRICT_NEIGHBORS).find(k => normDist.includes(k) || k.includes(normDist));
+    if (matchKey && DISTRICT_NEIGHBORS[matchKey]) {
+      return DISTRICT_NEIGHBORS[matchKey].slice(0, 6);
+    }
+
+    // 3. Fallback to state cluster without current district
     const stateList = STATE_NEARBY_DISTRICTS[userState] || STATE_NEARBY_DISTRICTS['Uttar Pradesh'];
-    // Filter out user's current district to avoid duplicate
-    const filtered = stateList.filter(d => d.toLowerCase() !== userDistrict.toLowerCase());
-    return filtered.slice(0, 5);
+    return stateList.filter(d => d.toLowerCase() !== normDist).slice(0, 6);
   }, [userState, userDistrict]);
 
   const handleRegionChange = async (cityName, lat = null, lon = null) => {
@@ -679,6 +758,10 @@ export default function CommunityIntel() {
                       <MapPin size={12} />
                       {userDistrict} ({lang === 'hi' ? 'आपकी लोकेशन' : 'Current'})
                     </button>
+
+                    <span style={{ fontSize: '0.76rem', color: 'var(--text-dim)', margin: '0 4px', fontWeight: 600 }}>
+                      {lang === 'hi' ? 'नजदीकी ज़िले:' : 'Nearby Districts:'}
+                    </span>
 
                     {/* Nearby Districts Pills */}
                     {nearbyLocations.map(reg => (
