@@ -22,6 +22,7 @@ import { processOrchestratedQuery } from './src/services/aiOrchestrator.js';
 import * as soilModelService from './src/services/soilModelService.js';
 import * as cropModelService from './src/services/cropModelService.js';
 import { calculateDistressScore } from './src/engine/distressEngine.js';
+import { predictAgriculturePrice } from './src/services/agriMlService.js';
 
 // Input sanitizer: strip control chars, cap at 500 chars
 function sanitizeInput(text) {
@@ -69,7 +70,7 @@ let memoryQueryLogs = [
     isHighStakes: true,
     riskCategory: 'FINANCIAL_ELIGIBILITY',
     trustNote: 'High-stakes scheme eligibility query: Requires land document check.',
-    actionableSteps: ['Aadhar card link check karein', 'Kirana CSC center par e-KYC karein'],
+    actionableSteps: ['Aadhar card link check karein', 'Kirana Center par e-KYC karein'],
     status: 'PENDING_TRUST_REVIEW',
     createdAt: new Date()
   }
@@ -86,80 +87,7 @@ let memoryCommunityIntel = [
 let memorySchemeApplications = [];
 
 // In-Memory Fallback for FPO Crop Pools (Multi-User Real-Time Pooling)
-let memoryCropPools = [
-  {
-    poolId: 'pool_init_1',
-    commodity_hi: 'टमाटर (देसी संकर)',
-    commodity_en: 'Tomato (Hybrid Desi)',
-    category_hi: 'सब्ज़ी',
-    category_en: 'Vegetable',
-    targetQtl: 150,
-    filledQtl: 85,
-    buyerName: 'Mother Dairy Fresh Bulk Procurement',
-    buyerLocation: 'Azamgarh Mandi Gate 2',
-    state: 'Uttar Pradesh',
-    district: 'Azamgarh',
-    offerPrice: 2850,
-    deadline: '2026-09-05',
-    qualityRequired: 'Grade A Firm Red',
-    status: 'FILLING',
-    coordinatorName_hi: 'आज़मगढ़ किसान उत्पादक संघ (FPO)',
-    coordinatorName_en: 'Azamgarh FPO Consortium (Verified)',
-    participants: 9,
-    members: [
-      { farmerName: 'Ramesh Yadav', phone: '9876543210', village: 'Mubarakpur', qtl: 20, joinedAt: new Date() },
-      { farmerName: 'Shivpal Singh', phone: '9811223344', village: 'Sagri', qtl: 15, joinedAt: new Date() }
-    ],
-    createdBy: 'Azamgarh FPO',
-    createdAt: new Date()
-  },
-  {
-    poolId: 'pool_init_2',
-    commodity_hi: 'गेहूं (शरबती / HD-2967)',
-    commodity_en: 'Wheat (Sharbati HD-2967)',
-    category_hi: 'अनाज',
-    category_en: 'Grain',
-    targetQtl: 500,
-    filledQtl: 340,
-    buyerName: 'ITC Choupal Sagar Export Lot',
-    buyerLocation: 'Varanasi Direct Rail Terminal',
-    state: 'Uttar Pradesh',
-    district: 'Varanasi',
-    offerPrice: 2475,
-    deadline: '2026-09-12',
-    qualityRequired: 'Moisture < 12%, Clean Grain',
-    status: 'FILLING',
-    coordinatorName_hi: 'काशी कृषक विकास समिति',
-    coordinatorName_en: 'Kashi Agro Cooperative',
-    participants: 22,
-    members: [],
-    createdBy: 'Kashi FPO',
-    createdAt: new Date()
-  },
-  {
-    poolId: 'pool_init_3',
-    commodity_hi: 'हरी मिर्च (जी-4 तीखी)',
-    commodity_en: 'Green Chilli (G-4 Spicy)',
-    category_hi: 'सब्ज़ी',
-    category_en: 'Vegetable',
-    targetQtl: 80,
-    filledQtl: 15,
-    buyerName: 'Reliance Fresh Regional Distribution',
-    buyerLocation: 'Gorakhpur Transport Hub',
-    state: 'Uttar Pradesh',
-    district: 'Gorakhpur',
-    offerPrice: 3400,
-    deadline: '2026-09-08',
-    qualityRequired: 'Fresh Green 7-9cm',
-    status: 'OPEN',
-    coordinatorName_hi: 'पूर्वांचल एग्रो प्रोड्यूसर कंपनी',
-    coordinatorName_en: 'Poorvanchal Agro Producer Co.',
-    participants: 3,
-    members: [],
-    createdBy: 'Poorvanchal FPO',
-    createdAt: new Date()
-  }
-];
+let memoryCropPools = [];
 
 const APPLICATION_STATUSES = ['WAITING', 'COMPLAINED', 'APPROVED', 'REJECTED', 'WITHDRAWN'];
 const COMPLAINT_COOLDOWN_DAYS = 7;
@@ -181,7 +109,7 @@ app.get('/api/health', (req, res) => {
 // 2. Process Voice Query (POST /api/query)
 app.post('/api/query', async (req, res) => {
   try {
-    const { transcribed_text, transcribedText, user_location, userId, userEmail, userName, dialect } = req.body || {};
+    const { transcribed_text, transcribedText, user_location, userId, userEmail, userName, dialect, conversation_history } = req.body || {};
     const rawText = transcribed_text || transcribedText;
 
     const safeText = sanitizeInput(rawText);
@@ -219,31 +147,34 @@ app.post('/api/query', async (req, res) => {
     }
     const weatherData = await fetchLiveWeatherData(detectedCity);
 
-    // Run AI Engine through Rotator (sanitized text, optional dialect)
+    // Run AI Engine through Rotator (sanitized text, optional dialect, multi-turn history)
     const safeDialect = dialect ? sanitizeInput(dialect).slice(0, 30) : null;
     let aiResult = null;
     let engineSource = 'GEMINI_AI';
 
     try {
-      aiResult = await processVoiceQuery(safeText, intelList, weatherData, safeDialect);
+      aiResult = await processVoiceQuery(safeText, intelList, weatherData, safeDialect, conversation_history);
     } catch (geminiErr) {
-      console.warn('[API /api/query] Gemini AI engine unavailable, using Local NLP Engine fallback:', geminiErr.message);
-      const fallback = processUserSpeechQuery(safeText, { userLocation: user_location });
+      console.warn('[API /api/query] AI engine unavailable:', geminiErr.message);
       aiResult = {
-        short_answer_hi: fallback.shortAnswerHi,
-        short_answer_en: fallback.shortAnswerEn,
-        detailed_answer_hi: fallback.detailedAnswerHi,
-        detailed_answer_en: fallback.detailedAnswerEn,
-        confidence: fallback.confidence || 'LOW',
-        follow_up_questions: fallback.follow_up_questions || [],
-        domain: fallback.domain || 'AGRI_ADVISORY',
-        is_high_stakes: fallback.isHighStakes || false,
-        risk_category: fallback.riskCategory || 'NONE',
-        trust_note: fallback.trustNote || '',
-        actionable_steps: fallback.actionableSteps || [],
+        short_answer_hi: 'AI सेवा अस्थायी रूप से अनुपलब्ध है। कृपया कुछ समय बाद पुनः प्रयास करें।',
+        short_answer_en: 'AI service is temporarily out of service. Please try again in a moment.',
+        detailed_answer_hi: 'AI मॉडल सर्वर कनेक्ट करने में असमर्थ था। कृपया इंटरनेट कनेक्शन या API स्थिति की जांच करें और पुनः प्रयास करें।',
+        detailed_answer_en: 'The AI model server was unable to respond. Please check your network connection or API status and try again.',
+        confidence: 'LOW',
+        follow_up_questions: ['पुनः प्रयास करें / Try again', 'मंडी भाव देखें / Check mandi rates'],
+        domain: 'AGRI_ADVISORY',
+        is_high_stakes: false,
+        risk_category: 'NONE',
+        trust_note: 'AI Service Out of Service',
+        actionable_steps: ['कृपया कुछ समय बाद पुनः प्रयास करें / Please try again shortly.'],
+        distress_score: 0,
+        distress_level: 'LOW',
+        damage_impact_hi: 'अस्थायी AI सेवा बाधा।',
+        damage_impact_en: 'Temporary AI service disruption.',
         apiKeyIndexUsed: -1
       };
-      engineSource = 'LOCAL_NLP_FALLBACK';
+      engineSource = 'AI_OUT_OF_SERVICE';
     }
 
     const initialStatus = aiResult.is_high_stakes ? 'PENDING_TRUST_REVIEW' : 'AUTO_VERIFIED';
@@ -501,6 +432,26 @@ app.post('/api/intel', async (req, res) => {
   }
 });
 
+// 5b. Agriculture Machine Learning Price Prediction Endpoint (POST /api/agriculture/predict)
+app.post('/api/agriculture/predict', (req, res) => {
+  try {
+    const inputParams = req.body || {};
+    const result = predictAgriculturePrice(inputParams);
+    return res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[API POST /api/agriculture/predict Error]:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to generate agriculture price prediction.',
+      fallback_warning: 'Agriculture prediction service temporarily unavailable.'
+    });
+  }
+});
+
 // 6. Get User Voice Query History (GET /api/user/queries/:userId)
 app.get('/api/user/queries/:userId', async (req, res) => {
   try {
@@ -514,6 +465,21 @@ app.get('/api/user/queries/:userId', async (req, res) => {
   } catch (error) {
     console.error('[API GET /api/user/queries Error]:', error);
     return res.status(500).json({ error: 'Failed to fetch user query history.' });
+  }
+});
+
+// 6b. Delete Query Record / Chat Session (DELETE /api/user/queries/:id)
+app.delete('/api/user/queries/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (isMongoDBConnected()) {
+      await QueryLog.findByIdAndDelete(id);
+    }
+    memoryQueryLogs = memoryQueryLogs.filter(q => String(q._id) !== String(id));
+    return res.json({ success: true, message: 'Query record deleted successfully.' });
+  } catch (error) {
+    console.error('[API DELETE /api/user/queries/:id Error]:', error);
+    return res.status(500).json({ error: 'Failed to delete query record.' });
   }
 });
 

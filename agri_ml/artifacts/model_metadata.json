@@ -1,0 +1,113 @@
+{
+  "model_name": "HistGradientBoosting",
+  "model_version": "1.0.0",
+  "training_date": "2026-08-29 15:08:23",
+  "total_dataset_rows": 297180,
+  "train_rows": 208026,
+  "val_rows": 44577,
+  "test_rows": 44577,
+  "target_column": "Modal_Price (INR/quintal)",
+  "currency": "INR",
+  "unit": "quintal",
+  "features_used": [
+    "soil_ph",
+    "soil_moisture",
+    "rainfall",
+    "wind_speed",
+    "temperature",
+    "humidity",
+    "year",
+    "month",
+    "day_of_year",
+    "quarter",
+    "temp_humidity_index",
+    "rainfall_moisture_interaction",
+    "wind_moisture_ratio",
+    "ph_neutral_diff",
+    "Commodity_target_enc",
+    "STATE_target_enc",
+    "District Name_target_enc",
+    "Market Name_target_enc",
+    "Variety_target_enc",
+    "Grade_target_enc",
+    "season_target_enc",
+    "soil_type_target_enc",
+    "Commodity_freq",
+    "STATE_freq",
+    "District Name_freq",
+    "Market Name_freq",
+    "Variety_freq",
+    "Grade_freq",
+    "season_freq",
+    "soil_type_freq",
+    "Commodity_label",
+    "STATE_label",
+    "District Name_label",
+    "Market Name_label",
+    "Variety_label",
+    "Grade_label",
+    "season_label",
+    "soil_type_label"
+  ],
+  "validation_metrics": {
+    "MAE": 659.55,
+    "RMSE": 859.88,
+    "R2": 0.6911
+  },
+  "test_metrics": {
+    "MAE": 612.55,
+    "RMSE": 892.39,
+    "R2": 0.5646
+  },
+  "uncertainty": {
+    "residual_std": 838.1406183936168,
+    "mae_margin": 659.5464631751294,
+    "margin_95_percent": 1642.76
+  },
+  "comparison_table": [
+    {
+      "Model": "HistGradientBoosting",
+      "Train MAE": 332.1,
+      "Val MAE": 659.55,
+      "Val RMSE": 859.88,
+      "Val R2": 0.6911,
+      "Test MAE": 612.55,
+      "Test RMSE": 892.39,
+      "Test R2": 0.5646,
+      "Train Time (s)": 6.01
+    },
+    {
+      "Model": "RandomForest",
+      "Train MAE": 527.89,
+      "Val MAE": 800.95,
+      "Val RMSE": 1037.62,
+      "Val R2": 0.5502,
+      "Test MAE": 910.67,
+      "Test RMSE": 1190.49,
+      "Test R2": 0.2251,
+      "Train Time (s)": 1.51
+    },
+    {
+      "Model": "ExtraTrees",
+      "Train MAE": 610.7,
+      "Val MAE": 839.74,
+      "Val RMSE": 1081.0,
+      "Val R2": 0.5118,
+      "Test MAE": 946.82,
+      "Test RMSE": 1208.68,
+      "Test R2": 0.2012,
+      "Train Time (s)": 0.68
+    },
+    {
+      "Model": "GradientBoosting",
+      "Train MAE": 481.93,
+      "Val MAE": 753.04,
+      "Val RMSE": 973.21,
+      "Val R2": 0.6043,
+      "Test MAE": 743.43,
+      "Test RMSE": 1016.86,
+      "Test R2": 0.4346,
+      "Train Time (s)": 9.32
+    }
+  ]
+}

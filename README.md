@@ -1,8 +1,6 @@
 # 🎙️ LokVani AI (LokVani.AI)
 > **Inclusive, Voice-First & Trust-Verified Intelligence for Bharat's Farmers & Micro-Vendors**
 
-Built for the **AI for Public Good** track at OOSC Hackathon.
-
 ---
 
 ## 🌟 Overview
@@ -33,38 +31,6 @@ Over 500 million non-smartphone users and underserved citizens in India are excl
 * **Voice Engine:** Web Speech API (`SpeechRecognition` & `SpeechSynthesis`)
 * **AI Engine:** Google Gemini 1.5 Flash API (`@google/generative-ai`) + Smart Offline Fallback Engine
 * **Icons:** Lucide React Icons
-
----
-
-## 💻 Local Setup & Development
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/SairajTripathy-0077/OOSC-Hackathon.git
-   cd OOSC-Hackathon
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **(Optional) Add your Gemini API Key:**
-   Create a `.env` file in the root directory:
-   ```env
-   VITE_GEMINI_API_KEY=your_gemini_api_key_here
-   ```
-   *(Note: If no API key is provided, LokVani AI uses its built-in offline smart reasoning engine).*
-
-4. **Run local dev server:**
-   ```bash
-   npm run dev
-   ```
-
-5. **Build for production:**
-   ```bash
-   npm run build
-   ```
 
 ---
 

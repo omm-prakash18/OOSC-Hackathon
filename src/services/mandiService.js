@@ -2,16 +2,9 @@
  * mandiService.js
  * Live Mandi Price & Commodity Intelligence Service
  *
- * AUTO-ACTIVATES when VITE_DATA_GOV_API_KEY is set in .env
- * Falls back to static demo data if key is blank or API fails.
- *
- * Data source: data.gov.in
- * Dataset: Current Daily Price of Various Commodities from Various Markets (Mandi)
- * Resource ID: 9ef84268-d588-465a-a308-a864a43d0070
+ * Uses backend proxy (/api/intel) to prevent browser CORS blocks on government APIs.
+ * Falls back cleanly to demo dataset if API is unreachable.
  */
-
-const DATA_GOV_KEY   = import.meta.env.VITE_DATA_GOV_API_KEY;
-const MANDI_RESOURCE = '9ef84268-d588-465a-a308-a864a43d0070';
 
 /* ── Category mapping by commodity name ──────────────────────────────────── */
 const CATEGORY_MAP = {
@@ -28,7 +21,7 @@ const CATEGORY_MAP = {
   turmeric: 'Spice', chili: 'Spice', coriander: 'Spice', ginger: 'Spice',
 };
 
-function detectCategory(commodityName) {
+export function detectCategory(commodityName) {
   const lower = (commodityName || '').toLowerCase();
   for (const [keyword, cat] of Object.entries(CATEGORY_MAP)) {
     if (lower.includes(keyword)) return cat;
@@ -36,7 +29,7 @@ function detectCategory(commodityName) {
   return 'Other';
 }
 
-/* ── Static fallback data (used when API key is absent or API fails) ──────── */
+/* ── Static fallback data (used when backend is offline) ──────── */
 export const INITIAL_MANDI_RATES = [
   { id: 'm1', item: 'Tamatar (Tomato)', price: 28, unit: 'kg',      location: 'Azamgarh Mandi',  state: 'Uttar Pradesh', trend: 'down',   category: 'Vegetable', reportedBy: 'Mandi Board', createdAt: new Date().toISOString() },
   { id: 'm2', item: 'Pyaaz (Onion)',    price: 34, unit: 'kg',      location: 'Gorakhpur Mandi', state: 'Uttar Pradesh', trend: 'stable', category: 'Vegetable', reportedBy: 'Local Farmer', createdAt: new Date().toISOString() },
@@ -49,61 +42,24 @@ export const INITIAL_MANDI_RATES = [
 ];
 
 /**
- * Fetch live mandi rates from data.gov.in.
- * Automatically uses the API key from VITE_DATA_GOV_API_KEY in .env.
- * Falls back to INITIAL_MANDI_RATES if key is missing or fetch fails.
- *
- * @param {string} state    - State to filter (default: Uttar Pradesh)
- * @param {number} limit    - Max records to fetch (default: 50)
+ * Fetch live mandi rates from backend endpoint (/api/intel).
+ * Uses proxy to eliminate client CORS restrictions.
  */
 export async function fetchLiveMandiRates(state = 'Uttar Pradesh', limit = 50) {
-  // ── Try data.gov.in live API first ─────────────────────────────────────
-  if (DATA_GOV_KEY) {
-    try {
-      const url = new URL(`https://api.data.gov.in/resource/${MANDI_RESOURCE}`);
-      url.searchParams.set('api-key', DATA_GOV_KEY);
-      url.searchParams.set('format', 'json');
-      url.searchParams.set('limit', String(limit));
-      url.searchParams.set('filters[state]', state);
-
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error(`data.gov.in responded ${res.status}`);
-      const json = await res.json();
-
-      if (json.records && json.records.length > 0) {
-        return json.records.map((r, i) => ({
-          id:          `gov_${i}_${r.commodity}_${r.market}`,
-          item:        r.commodity,
-          price:       Number(r.modal_price) || Number(r.min_price) || 0,
-          unit:        'quintal',
-          location:    `${r.market}, ${r.district}`,
-          state:       r.state,
-          trend:       'stable',                        // live API doesn't provide trend
-          category:    detectCategory(r.commodity),
-          reportedBy:  'data.gov.in (Mandi Board)',
-          createdAt: (() => {
-            if (r.arrival_date && r.arrival_date.includes('/')) {
-              const [dd, mm, yyyy] = r.arrival_date.split('/');
-              if (dd && mm && yyyy) return new Date(`${yyyy}-${mm}-${dd}`).toISOString();
-            }
-            return new Date().toISOString();
-          })(),
-        }));
-      }
-    } catch (err) {
-      console.warn('[mandiService] data.gov.in fetch failed, using fallback:', err.message);
-    }
-  }
-
-  // ── Try backend /api/intel endpoint ───────────────────────────────────
+  // 1. Fetch from backend API route
   try {
     const res = await fetch('/api/intel');
     if (res.ok) {
       const json = await res.json();
-      if (json.data && json.data.length > 0) return json.data;
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        return json.data.map(item => ({
+          ...item,
+          category: item.category || detectCategory(item.item)
+        }));
+      }
     }
   } catch (_) {}
 
-  // ── Static fallback ───────────────────────────────────────────────────
+  // 2. Clean fallback
   return INITIAL_MANDI_RATES;
 }

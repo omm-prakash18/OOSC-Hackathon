@@ -11,7 +11,7 @@ export const GOVT_SCHEMES = [
     target: "Small & Marginal Farmers",
     eligibility: "Farmers with cultivable landholding up to 2 hectares; Aadhar-seeded bank account & e-KYC required.",
     benefits: "₹6,000 per year paid in 3 equal installments of ₹2,000 directly to bank account.",
-    how_to_apply: "Online via pmkisan.gov.in or e-KYC at local Kirana / CSC Center with Aadhar Card and Khasra papers.",
+    how_to_apply: "Online via pmkisan.gov.in or e-KYC at local Kirana Center with Aadhar Card and Khasra papers.",
     documents: ["Aadhar Card", "Bank Passbook", "Land Khasra/Khatauni Paper"]
   },
   {

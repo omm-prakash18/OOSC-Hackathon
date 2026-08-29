@@ -126,8 +126,8 @@ function localNlpEngine(userSpeech, userLocation) {
       else if (lower.includes('kusum') || lower.includes('solar')) schemeObj = GOVT_SCHEMES[4];
       else schemeObj = GOVT_SCHEMES[0];
     }
-    const shortHi = `${schemeObj.name} ke liye Aadhar Card aur Bank Passbook ke saath Kirana CSC center par jayen. Isme ${schemeObj.benefits} milta hai.`;
-    const shortEn = `For ${schemeObj.name}, visit your Kirana CSC center with Aadhar Card and bank passbook. Benefit: ${schemeObj.benefits}.`;
+    const shortHi = `${schemeObj.name} ke liye Aadhar Card aur Bank Passbook ke saath Kirana Center par jayen. Isme ${schemeObj.benefits} milta hai.`;
+    const shortEn = `For ${schemeObj.name}, visit your Kirana Center with Aadhar Card and bank passbook. Benefit: ${schemeObj.benefits}.`;
 
     return {
       transcribedText: userSpeech,
@@ -209,10 +209,10 @@ function localNlpEngine(userSpeech, userLocation) {
     transcribedText: userSpeech,
     intent: 'general_advice',
     domain: 'AGRI_ADVISORY',
-    shortAnswerHi: `Aapka sawal "${text.slice(0, 60)}" prapt hua. ${topic} ke baare mein sahi jankari ke liye apne Kirana CSC node se sampark karein.`,
+    shortAnswerHi: `Aapka sawal "${text.slice(0, 60)}" prapt hua. ${topic} ke baare mein sahi jankari ke liye apne Kirana Node se sampark karein.`,
     shortAnswerEn: `Received your question about "${topic}". For verified guidance, please consult your local Kirana Trust Node.`,
-    detailedAnswerHi: `Aapne ${topic} ke baare mein poochha. Is vishay par sahi aur up-to-date jankari ke liye apne nayik Kirana CSC center par jaen. Wahan trained operator aapko sarkari yojanaon, mandi rates, aur krishi salah ke baare mein sahi margdarshan de sakte hain. Aap Kisan Helpline 1551 par bhi free call kar sakte hain.`,
-    detailedAnswerEn: `You asked about ${topic}. For accurate and up-to-date information on this subject, visit your nearest Kirana CSC center. Trained operators can guide you on government schemes, mandi rates, and agricultural advisory. You can also call Kisan Helpline 1551 for free guidance.`,
+    detailedAnswerHi: `Aapne ${topic} ke baare mein poochha. Is vishay par sahi aur up-to-date jankari ke liye apne saamipya Kirana Center par jaen. Wahan trained operator aapko sarkari yojanaon, mandi rates, aur krishi salah ke baare mein sahi margdarshan de sakte hain. Aap Kisan Helpline 1551 par bhi free call kar sakte hain.`,
+    detailedAnswerEn: `You asked about ${topic}. For accurate and up-to-date information on this subject, visit your nearest Kirana Center. Trained operators can guide you on government schemes, mandi rates, and agricultural advisory. You can also call Kisan Helpline 1551 for free guidance.`,
     needs_trust_node_review: false,
     isHighStakes: false,
     riskCategory: 'NONE',

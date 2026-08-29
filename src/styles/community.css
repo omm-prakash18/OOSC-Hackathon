@@ -66,13 +66,20 @@
   font-family: var(--font-heading);
 }
 
-/* ─── News Section Dedicated Hindi Typography ────────────────────────────── */
-.community-news-card,
-.community-news-card h4,
+/* ─── News Section Typography (unified with overall website font) ─── */
+.community-news-card {
+  font-family: var(--font-body);
+}
+
+.community-news-card h4 {
+  font-family: var(--font-heading);
+}
+
 .community-news-card p,
 .community-news-card span,
-.community-news-card a {
-  font-family: 'Noto Sans Devanagari', 'Mukta', sans-serif !important;
+.community-news-card a,
+.community-news-card button {
+  font-family: var(--font-body);
 }
 
 /* ─── 3. Section Dividers ─────────────────────────────────────────────────── */

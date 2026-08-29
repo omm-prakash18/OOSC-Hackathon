@@ -3,12 +3,13 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { speechService } from '../services/speechService';
 import { processUserSpeechQuery } from '../services/aiCoreEngine';
+import { geminiRotator } from '../services/geminiKeyRotator';
 import {
   Mic, MicOff, Volume2, VolumeX, ShieldAlert, Sparkles, CheckCircle2,
   AlertTriangle, ArrowRight, RefreshCw, Wheat, Bug, TrendingUp, Send, X,
   ChevronDown, ChevronUp, MessageSquare, Gauge, Type, Zap, Clock, MapPin,
   ThumbsUp, ThumbsDown, MessageSquarePlus, Trash2, Edit2, Check, User,
-  RotateCcw
+  RotateCcw, Globe, Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,10 @@ const DEMO_PRESETS = [
     query_en: 'What is today wholesale price of onion in Gorakhpur Mandi?',
     query_hi: 'Aaj Gorakhpur Mandi me pyaaz ka thoke rate kya hai?',
     icon: TrendingUp, color: 'text-indigo-600', bg: 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200' },
+  { label_en: 'ML Price Forecast', label_hi: 'मूल्य पूर्वानुमान (ML)',
+    query_en: 'Predict rice price in West Bengal with rainfall 820mm, temperature 28C, soil pH 6.5',
+    query_hi: 'West Bengal mein Rice ka price predict karein (Barish 820mm, Temp 28C, pH 6.5)',
+    icon: Sparkles, color: 'text-emerald-600', bg: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200' },
 ];
 
 function ConfidenceBadge({ level }) {
@@ -65,6 +70,106 @@ function ConfidenceBadge({ level }) {
       <span>{c.icon}</span>
       <span>{c.label_en}</span>
     </span>
+  );
+}
+
+// ─── Distress Bar Component ─────────────────────────────────────────
+function DistressDamageBar({ result, dialect }) {
+  if (!result) return null;
+
+  let score = result.distressScore || result.distress_score;
+  let level = result.distressLevel || result.distress_level;
+  let impactEn = result.damageImpactEn || result.damage_impact_en;
+  let impactHi = result.damageImpactHi || result.damage_impact_hi;
+
+  // Heuristic calculation if not explicitly provided by backend
+  if (score === undefined || score === null) {
+    if (result.domain === 'AGRI_ADVISORY' && (result.riskCategory === 'PESTICIDE_SAFETY' || result.riskCategory === 'AGRICULTURAL_DOSAGE')) {
+      score = 85;
+      level = 'CRITICAL';
+      impactEn = 'High Crop Damage Risk: Potential 35%–55% crop yield loss if pest/fungal blight is untreated within 48 hours.';
+      impactHi = 'उच्च फसल क्षति जोखिम: 48 घंटे में उचित कीटनाशक न छिड़कने पर 35%-55% तक फसल नुकसान की संभावना।';
+    } else if (result.domain === 'WEATHER') {
+      score = 65;
+      level = 'HIGH';
+      impactEn = 'Weather Impact Risk: 20%–30% harvest damage risk from rain/waterlogging. Cover harvested produce immediately.';
+      impactHi = 'मौसम प्रभाव जोखिम: बारिश/जलभराव से 20%-30% कटी फसल नुकसान का खतरा। तुरंत तिरपाल से ढकें।';
+    } else if (result.domain === 'GOVT_SCHEME' || result.isHighStakes) {
+      score = 75;
+      level = 'HIGH';
+      impactEn = 'Financial Eligibility Risk: Risk of subsidy delay or application rejection without land record verification.';
+      impactHi = 'वित्तीय पात्रता जोखिम: दस्तावेज सत्यापन के बिना सब्सिडी रुकने या आवेदन निरस्त होने की संभावना।';
+    } else if (result.domain === 'MARKET_PRICE') {
+      score = 35;
+      level = 'MODERATE';
+      impactEn = 'Market Price Risk: Moderate 10%–15% income variance based on market location and quality grade.';
+      impactHi = 'मंडी भाव जोखिम: बाजार स्थान और गुणवत्ता ग्रेड के आधार पर 10%-15% आय में उतार-चढ़ाव की संभावना।';
+    } else {
+      score = 20;
+      level = 'LOW';
+      impactEn = 'Low Business Impact: Standard informational query with minimal operational risk.';
+      impactHi = 'कम व्यावसायिक जोखिम: सामान्य जानकारी प्रश्न; न्यूनतम परिचालन जोखिम।';
+    }
+  }
+
+  const levelColor =
+    score >= 80 ? 'bg-rose-600 border-rose-200 text-white' :
+    score >= 60 ? 'bg-amber-500 border-amber-200 text-white' :
+    score >= 30 ? 'bg-orange-500 border-orange-200 text-white' :
+                  'bg-emerald-500 border-emerald-200 text-white';
+
+  const barGradient =
+    score >= 80 ? 'from-rose-500 to-red-600' :
+    score >= 60 ? 'from-amber-500 to-orange-500' :
+    score >= 30 ? 'from-amber-400 to-amber-600' :
+                  'from-emerald-400 to-emerald-600';
+
+  const impactText = (dialect === 'en') ? (impactEn || impactHi) : (impactHi || impactEn);
+
+  return (
+    <div className="p-4 sm:p-5 rounded-2xl bg-zinc-900 text-white space-y-3.5 shadow-lg border border-zinc-800 my-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={16} className={score >= 60 ? 'text-rose-400 animate-pulse' : 'text-amber-400'} />
+          <span className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-300">
+            {dialect === 'en' ? 'Farming & Business Distress Index' : 'फसल व व्यवसाय क्षति जोखिम सूचकांक'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={cn('px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest', levelColor)}>
+            {level} ({score}%)
+          </span>
+        </div>
+      </div>
+
+      {/* Animated Meter Bar */}
+      <div className="space-y-1.5">
+        <div className="h-3 w-full bg-zinc-800 rounded-full overflow-hidden p-0.5 border border-white/10">
+          <div
+            className={cn('h-full rounded-full transition-all duration-1000 ease-out bg-gradient-to-r', barGradient)}
+            style={{ width: `${Math.min(100, Math.max(5, score))}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[9px] font-mono text-zinc-400 uppercase tracking-widest">
+          <span>0% Low Impact</span>
+          <span>50% Moderate</span>
+          <span>100% Critical Damage</span>
+        </div>
+      </div>
+
+      {/* Impact Explanation */}
+      {impactText && (
+        <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs leading-relaxed text-zinc-200 flex items-start gap-2.5">
+          <ShieldAlert size={15} className="shrink-0 text-amber-400 mt-0.5" />
+          <div>
+            <p className="font-semibold text-white mb-0.5">
+              {dialect === 'en' ? 'Estimated Damage & Business Impact:' : 'अनुमानित क्षति व व्यावसायिक प्रभाव:'}
+            </p>
+            <p className="text-zinc-300">{impactText}</p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -109,6 +214,7 @@ export default function UserVoiceApp() {
   const [showDetailedMap, setShowDetailedMap] = useState({});
   const [ttsRate, setTtsRate]               = useState(1.0);
   const [largeText, setLargeText]           = useState(() => localStorage.getItem('lokvani_large_text') === 'true');
+  const [activeTranslateLang, setActiveTranslateLang] = useState('auto');
   const [showModal, setShowModal]           = useState(false);
   const [reportItem,     setReportItem]     = useState('Tamatar (Tomato)');
   const [reportPrice,    setReportPrice]    = useState('30');
@@ -173,7 +279,7 @@ export default function UserVoiceApp() {
     speechService.speakText(text, ttsLocale, () => setAppState('IDLE'), ttsRate);
   }, [isSpeaking, stopSpeaking, ttsLocale, ttsRate]);
 
-  // ── Query processing ────────────────────────────────────────────────
+  // ── Query processing with Context Retention ──────────────────────────
   const handleProcessQuery = useCallback(async (queryText) => {
     const trimmed = queryText.trim().slice(0, 500);
     if (!trimmed) { setAppState('IDLE'); return; }
@@ -199,6 +305,7 @@ export default function UserVoiceApp() {
             userId: user?.uid || 'user_demo_1',
             userName: userProfile?.fullName || user?.displayName || 'Citizen',
             dialect: dialectInfo.promptName,
+            conversation_history: activeConversation?.messages || []
           })
         });
         if (res.ok) {
@@ -219,83 +326,30 @@ export default function UserVoiceApp() {
           }
         }
       } catch (e) {
-        if (e.name === 'AbortError') {
-          console.log('[UserVoiceApp] Query fetch aborted by new user action.');
-          return;
-        }
-        console.warn('[UserVoiceApp] Backend offline or unreachable — using local fallback engine');
+        if (e.name === 'AbortError') return;
+        console.warn('[UserVoiceApp] Backend offline — using local fallback engine');
       }
 
-      // If network call failed or returned empty payload, use deterministic local NLP engine
       if (!data || (!data.shortAnswerHi && !data.shortAnswerEn)) {
-        const local = processUserSpeechQuery(trimmed, { userLocation: 'Azamgarh, UP' });
         data = {
-          _id: `local_${Date.now()}`,
+          _id: `offline_${Date.now()}`,
           transcribedText: trimmed,
-          userLocation: 'Azamgarh, UP',
-          shortAnswerHi: local.shortAnswerHi   || '',
-          shortAnswerEn: local.shortAnswerEn   || '',
-          detailedAnswerHi: local.detailedAnswerHi || local.shortAnswerHi || '',
-          detailedAnswerEn: local.detailedAnswerEn || local.shortAnswerEn || '',
-          confidence: local.confidence || 'LOW',
-          followUpQuestions: local.follow_up_questions || [],
-          domain: local.domain || 'AGRI_ADVISORY',
-          isHighStakes: local.isHighStakes || false,
-          riskCategory: local.riskCategory || 'NONE',
-          trustNote: local.trustNote || '',
-          actionableSteps: local.actionableSteps || [],
-          status: local.isHighStakes ? 'PENDING_TRUST_REVIEW' : 'AUTO_VERIFIED (Offline)',
-          engineSource: 'LOCAL_NLP_FALLBACK',
+          shortAnswerHi: 'AI सेवा अस्थायी रूप से अनुपलब्ध है।',
+          shortAnswerEn: 'AI service is temporarily out of service.',
+          confidence: 'LOW',
           createdAt: new Date(),
         };
       }
 
       addMessageToActiveConv(data);
       setTranscript('');
-
-      const ttsText = dialect === 'en'
-        ? (data.shortAnswerEn || data.shortAnswerHi)
-        : (data.shortAnswerHi || data.shortAnswerEn);
-      handlePlayTTS(ttsText);
+      handlePlayTTS(primaryAnswer(data));
     } catch (err) {
       console.error('[UserVoiceApp] Error processing query:', err);
     } finally {
       setAppState('IDLE');
     }
-  }, [dialect, dialectInfo.promptName, addMessageToActiveConv, handlePlayTTS]);
-
-  const querySubmittedRef = useRef(false);
-
-  const handleStartListening = useCallback(() => {
-    if (isProcessing) return;
-    if (isSpeaking) stopSpeaking();
-    setAppState('LISTENING');
-    setTranscript('');
-    querySubmittedRef.current = false;
-
-    speechService.startListening(
-      (r) => {
-        setTranscript(r.transcript);
-      },
-      (e) => {
-        console.warn('[UserVoiceApp] STT Error:', e);
-        setAppState('IDLE');
-      },
-      (capturedText) => {
-        // Conclude voice session and process complete transcript
-        setAppState('IDLE');
-        if (capturedText && capturedText.trim() && !querySubmittedRef.current) {
-          querySubmittedRef.current = true;
-          handleProcessQuery(capturedText.trim());
-        }
-      },
-      sttLocale
-    );
-  }, [isProcessing, isSpeaking, stopSpeaking, sttLocale, handleProcessQuery]);
-
-  const handleStopListening = useCallback(() => {
-    speechService.stopListeningAndSubmit();
-  }, []);
+  }, [dialectInfo.promptName, addMessageToActiveConv, handlePlayTTS, activeConversation?.messages, user?.uid, userProfile?.fullName]);
 
   const handlePresetSelect = useCallback((p) => {
     if (isProcessing) return;
@@ -330,7 +384,7 @@ export default function UserVoiceApp() {
     <TooltipProvider>
     <div className={cn('max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col lg:flex-row gap-5 items-start', largeText && 'large-text')}>
 
-      {/* ── Floating Sticky Stop Voice Banner (when AI is speaking) ──────────────── */}
+      {/* ── Floating Sticky Stop Voice Banner ──────────────── */}
       {isSpeaking && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-5 duration-200">
           <div className="flex items-center gap-3.5 px-5 py-3 rounded-full bg-slate-900/95 text-white shadow-2xl backdrop-blur-md border border-white/20">
@@ -340,9 +394,6 @@ export default function UserVoiceApp() {
             <div className="flex flex-col text-left">
               <span className="text-xs font-bold text-white leading-none">
                 {language === 'hi' ? 'एआई आवाज़ चालू है' : 'AI Speaking...'}
-              </span>
-              <span className="text-[10px] text-slate-300">
-                {language === 'hi' ? 'रोकने के लिए दबाएं (या Esc दबाएं)' : 'Press to stop (or Esc key)'}
               </span>
             </div>
             <Button
@@ -622,6 +673,104 @@ export default function UserVoiceApp() {
                       </div>
                       <p className="text-sm font-semibold leading-relaxed">
                         "{msg.transcribedText}"
+                      </p>
+                    </div>
+                  </div>
+              {/* Live Response Translator Control Bar */}
+              <div className="p-3 rounded-2xl bg-zinc-100/90 border border-zinc-200/90 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-800">
+                    <Globe size={14} className="text-[#a07a1e]" />
+                    <span>{language === 'hi' ? 'उत्तर अनुवाद:' : 'Translate AI Response:'}</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-500 font-semibold">
+                    {targetDialectInfo.label} ({targetLangCode.toUpperCase()})
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setActiveTranslateLang('auto')}
+                    className={cn(
+                      'px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer',
+                      activeTranslateLang === 'auto'
+                        ? 'bg-zinc-900 text-white shadow-2xs'
+                        : 'bg-white text-zinc-700 hover:bg-zinc-200/70 border border-zinc-200'
+                    )}
+                  >
+                    {language === 'hi' ? 'मूल (Auto)' : 'Original (Auto)'}
+                  </button>
+                  {['hi', 'en', 'bho', 'mr', 'bn', 'ta', 'te', 'pa'].map((code) => {
+                    const info = DIALECT_MAP[code];
+                    const isSelected = activeTranslateLang === code;
+                    return (
+                      <button
+                        key={code}
+                        onClick={() => setActiveTranslateLang(code)}
+                        className={cn(
+                          'px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer',
+                          isSelected
+                            ? 'bg-emerald-600 text-white font-bold shadow-2xs'
+                            : 'bg-white text-zinc-700 hover:bg-zinc-50 border border-zinc-200/80'
+                        )}
+                      >
+                        {info.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Short Answer */}
+              <div className="p-5 sm:p-6 rounded-2xl bg-[#f4f8f2] border border-[#c8dcc4] space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-[10px] font-semibold text-[#48734f] uppercase tracking-[0.12em] flex items-center gap-1.5">
+                    <Sparkles size={11} />
+                    {language === 'hi' ? 'त्वरित उत्तर' : 'Quick Answer'}
+                  </p>
+                  <Button
+                    id="play-answer-btn"
+                    size="sm"
+                    variant={appState === 'SPEAKING' ? 'destructive' : 'default'}
+                    className="h-7 text-xs gap-1.5 px-3"
+                    onClick={() => handlePlayTTS(primaryAnswer(activeResult))}
+                  >
+                    {appState === 'SPEAKING'
+                      ? <><VolumeX size={12} /> {language === 'hi' ? 'रोकें' : 'Stop'}</>
+                      : <><Volume2 size={12} /> {language === 'hi' ? 'सुनें' : 'Play'}</>}
+                  </Button>
+                </div>
+                <p className="text-lg sm:text-xl font-bold font-condensed text-foreground leading-snug">
+                  {primaryAnswer(activeResult)}
+                </p>
+                {activeResult.shortAnswerEn && activeResult.shortAnswerHi && (
+                  <p className="text-xs text-muted-foreground italic">
+                    {dialect !== 'en' ? `EN: ${activeResult.shortAnswerEn}` : `HI: ${activeResult.shortAnswerHi}`}
+                  </p>
+                )}
+              </div>
+
+              {/* Farming & Business Distress Level & Damage Bar */}
+              <DistressDamageBar result={activeResult} dialect={dialect} />
+
+              {/* Detailed Answer (expandable) */}
+              {detailedAnswer(activeResult) && detailedAnswer(activeResult) !== primaryAnswer(activeResult) && (
+                <div className="border border-border/60 rounded-xl overflow-hidden">
+                  <button
+                    id="toggle-detailed"
+                    onClick={() => setShowDetailed(p => !p)}
+                    className="w-full flex items-center justify-between px-5 py-3 bg-muted/40 hover:bg-muted/60 transition-colors text-sm font-semibold text-foreground"
+                  >
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <MessageSquare size={14} />
+                      {language === 'hi' ? 'विस्तृत उत्तर' : 'Detailed Answer'}
+                    </span>
+                    {showDetailed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                  {showDetailed && (
+                    <div className="p-5 border-t border-border/40 space-y-3">
+                      <p className="text-sm text-foreground leading-relaxed">
+                        {detailedAnswer(activeResult)}
+>>>>>>> upstream/main
                       </p>
                     </div>
                   </div>

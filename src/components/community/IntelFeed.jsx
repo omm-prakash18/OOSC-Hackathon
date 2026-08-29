@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   TrendingUp, 
   AlertTriangle, 
@@ -8,16 +8,16 @@ import {
   Wifi, 
   ExternalLink, 
   Newspaper,
-  ThumbsUp,
-  Tag
+  ThumbsUp
 } from 'lucide-react';
 import { t } from './communityTranslations.js';
+import { translateText } from '../../services/newsService.js';
 
 const CATEGORY_CONFIG = {
-  PRICE_ALERT:  { label_hi: 'भाव अलर्ट', label_en: 'Price Alert', icon: <TrendingUp size={12} />, bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
-  WARNING:      { label_hi: 'सावधानी / अलर्ट', label_en: 'Advisory / Alert', icon: <AlertTriangle size={12} />, bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
-  ANNOUNCEMENT: { label_hi: 'समाचार व योजनाएं', label_en: 'News & Updates', icon: <Megaphone size={12} />, bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
-  DEMAND_SPIKE: { label_hi: 'मांग में तेजी', label_en: 'Demand Spike', icon: <Zap size={12} />, bg: '#fdf4ff', color: '#86198f', border: '#f5d0fe' },
+  PRICE_ALERT:  { label_hi: 'भाव अलर्ट', label_en: 'Price Alert', icon: <TrendingUp size={12} />, bg: '#f4f8f2', color: '#2e5735', border: '#dbe7d4' },
+  WARNING:      { label_hi: 'सावधानी / अलर्ट', label_en: 'Advisory / Alert', icon: <AlertTriangle size={12} />, bg: '#f4f4f5', color: '#3f3f46', border: '#e4e4e7' },
+  ANNOUNCEMENT: { label_hi: 'समाचार व योजनाएं', label_en: 'News & Updates', icon: <Megaphone size={12} />, bg: '#f0f5ee', color: '#3d6544', border: '#cfe0cb' },
+  DEMAND_SPIKE: { label_hi: 'मांग में तेजी', label_en: 'Demand Spike', icon: <Zap size={12} />, bg: '#f4f8f2', color: '#1b4d24', border: '#c0dbc0' },
 };
 
 function timeAgo(date, lang) {
@@ -37,11 +37,58 @@ function timeAgo(date, lang) {
 function NewsCard({ item, lang }) {
   const [likes, setLikes] = useState(item.confirms || 12);
   const [liked, setLiked] = useState(false);
+  
+  const [displayedHeadline, setDisplayedHeadline] = useState(() => {
+    return lang === 'hi' ? (item.headline_hi || item.headline_en || item.headline) : (item.headline_en || item.headline_hi || item.headline);
+  });
+  
+  const [displayedDetail, setDisplayedDetail] = useState(() => {
+    return lang === 'hi' ? (item.detail_hi || item.detail_en || item.detail) : (item.detail_en || item.detail_hi || item.detail);
+  });
 
   const cat = CATEGORY_CONFIG[item.category] || CATEGORY_CONFIG.ANNOUNCEMENT;
-  const headline = lang === 'hi' ? item.headline_hi : item.headline_en;
-  const detail = lang === 'hi' ? item.detail_hi : item.detail_en;
-  const reporter = lang === 'hi' ? item.reporter_hi : item.reporter_en;
+  const reporter = lang === 'hi' ? (item.reporter_hi || item.reporter_en || item.reporter) : (item.reporter_en || item.reporter_hi || item.reporter);
+
+  // Dynamic on-the-fly translation sync if target language text isn't in script
+  useEffect(() => {
+    let active = true;
+    const isHi = lang === 'hi';
+    const targetHeadline = isHi ? (item.headline_hi || item.headline_en || item.headline) : (item.headline_en || item.headline_hi || item.headline);
+    const targetDetail = isHi ? (item.detail_hi || item.detail_en || item.detail) : (item.detail_en || item.detail_hi || item.detail);
+
+    const hasDevanagari = /[\u0900-\u097F]/.test(targetHeadline || '');
+
+    if (isHi && !hasDevanagari && targetHeadline) {
+      translateText(targetHeadline, 'hi').then(tr => {
+        if (active && tr) setDisplayedHeadline(tr);
+      });
+      if (targetDetail && targetDetail !== targetHeadline) {
+        translateText(targetDetail, 'hi').then(tr => {
+          if (active && tr) setDisplayedDetail(tr);
+        });
+      } else {
+        setDisplayedDetail(targetDetail);
+      }
+    } else if (!isHi && hasDevanagari && targetHeadline) {
+      translateText(targetHeadline, 'en').then(tr => {
+        if (active && tr) setDisplayedHeadline(tr);
+      });
+      if (targetDetail && targetDetail !== targetHeadline) {
+        translateText(targetDetail, 'en').then(tr => {
+          if (active && tr) setDisplayedDetail(tr);
+        });
+      } else {
+        setDisplayedDetail(targetDetail);
+      }
+    } else {
+      setDisplayedHeadline(targetHeadline);
+      setDisplayedDetail(targetDetail);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [lang, item]);
 
   return (
     <article 
@@ -90,22 +137,25 @@ function NewsCard({ item, lang }) {
       {/* Headline & Detail */}
       <div>
         <h4 style={{
+          fontFamily: 'var(--font-heading, "Roboto Condensed", sans-serif)',
           fontSize: '1.05rem',
           fontWeight: 700,
           color: 'var(--text-main, #111827)',
           margin: '0 0 6px 0',
           lineHeight: 1.4,
+          letterSpacing: '-0.01em',
         }}>
-          {headline}
+          {displayedHeadline}
         </h4>
-        {detail && detail !== headline && (
+        {displayedDetail && displayedDetail !== displayedHeadline && (
           <p style={{
+            fontFamily: 'var(--font-body, "Roboto Condensed", sans-serif)',
             fontSize: '0.86rem',
             color: 'var(--text-muted, #4b5563)',
             lineHeight: 1.55,
             margin: 0,
           }}>
-            {detail}
+            {displayedDetail}
           </p>
         )}
       </div>
@@ -239,4 +289,3 @@ export default function IntelFeed({ feedItems = [], lang = 'en' }) {
     </section>
   );
 }
-

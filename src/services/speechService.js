@@ -132,6 +132,7 @@ class SpeechService {
 
     try {
       this.recognition.lang = langCode;
+      this.recognition.continuous = true;
       this.recognition.start();
       console.log(`[SpeechService] Recognition started. Language: ${langCode}`);
     } catch (err) {

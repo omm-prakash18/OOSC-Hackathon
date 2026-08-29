@@ -1,4 +1,5 @@
 import { geminiRotator } from './geminiKeyRotator.js';
+import { isAgriculturePredictionQuery, extractPredictionInputs, predictAgriculturePrice } from './agriMlService.js';
 
 /**
  * Gemini AI Query Engine — SERVER-SIDE ONLY.
@@ -32,8 +33,11 @@ Rules:
 7. domain: "GOVT_SCHEME" | "MARKET_PRICE" | "AGRI_ADVISORY" | "WEATHER"
 8. is_high_stakes (boolean): TRUE only for government scheme eligibility, document applications, pesticide/chemical dosage, or loan/financial commitments. FALSE for market prices, weather, general crop tips.
 9. risk_category: "FINANCIAL_ELIGIBILITY" | "PESTICIDE_SAFETY" | "FINANCIAL_LOAN" | "NONE"
-10. trust_note: Explain clearly why human/Kirana node review is needed (or say "Auto-verified" if not high stakes).
 11. actionable_steps: Array of 2-3 short, practical bullet points.
+12. distress_score (number 0-100): Quantify the distress/damage impact level (0-30 Low, 31-60 Moderate, 61-80 High, 81-100 Critical).
+13. distress_level: "CRITICAL" | "HIGH" | "MODERATE" | "LOW"
+14. damage_impact_hi: Concise explanation in simple Hindi of potential crop/financial/business damage if not addressed.
+15. damage_impact_en: Equivalent English explanation.
 
 IMPORTANT: If a dialect is specified in the query context, respond in that dialect/script wherever possible.
 For market price queries: use the provided community price data if available.
@@ -51,16 +55,25 @@ Return ONLY valid JSON — no markdown fences, no explanations outside the JSON:
   "is_high_stakes": false,
   "risk_category": "FINANCIAL_ELIGIBILITY | PESTICIDE_SAFETY | FINANCIAL_LOAN | NONE",
   "trust_note": "string",
-  "actionable_steps": ["step 1", "step 2"]
+  "actionable_steps": ["step 1", "step 2"],
+  "distress_score": 75,
+  "distress_level": "CRITICAL | HIGH | MODERATE | LOW",
+  "damage_impact_hi": "string",
+  "damage_impact_en": "string"
 }
 `;
 
-export async function processVoiceQuery(queryText, communityIntel = [], weatherData = null, dialect = null) {
+export async function processVoiceQuery(queryText, communityIntel = [], weatherData = null, dialect = null, conversationHistory = []) {
   // Server-side input sanitization
   const safeQuery = sanitizeInput(queryText);
   if (!safeQuery) {
     throw new Error('Invalid or empty query after sanitization.');
   }
+
+  // Build prior multi-turn conversation context
+  const historyContext = Array.isArray(conversationHistory) && conversationHistory.length > 0
+    ? `\nPrior Conversation Context in this chat session:\n${conversationHistory.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'LokVani AI'}: ${sanitizeInput(m.text)}`).join('\n')}\nUse this context to accurately resolve follow-up references (e.g. "it", "that crop", "that scheme", "how much", "where").`
+    : '';
 
   // Build community intel context
   const intelContext = Array.isArray(communityIntel) && communityIntel.length > 0
@@ -75,26 +88,68 @@ export async function processVoiceQuery(queryText, communityIntel = [], weatherD
     ? `User's preferred dialect: ${dialect}. Respond in that dialect/script as closely as possible.`
     : '';
 
-  const systemContext = `${SYSTEM_PROMPT}\n\nContext:\n${intelContext}\n${weatherContext}${dialectContext ? '\n' + dialectContext : ''}`;
+  // Check if query is an Agriculture Price Prediction request
+  let mlPredictionContext = '';
+  if (isAgriculturePredictionQuery(safeQuery)) {
+    try {
+      const extractedInputs = extractPredictionInputs(safeQuery, weatherData?.city || 'Azamgarh');
+      const mlResult = predictAgriculturePrice(extractedInputs);
+      if (mlResult && mlResult.is_prediction) {
+        mlPredictionContext = `\nAgriculture ML Model Prediction Context (Trained Joblib Model):
+Estimated Price: ₹${mlResult.predicted_price}/${mlResult.unit || 'quintal'}
+Estimated Range: ₹${mlResult.lower_estimate} - ₹${mlResult.upper_estimate} ${mlResult.currency || 'INR'}
+Model Confidence: ${mlResult.model_confidence}
+Warning: ${mlResult.warning}
+CRITICAL INSTRUCTION: Explicitly state that this is an ESTIMATED ML MODEL PREDICTION based on weather/soil parameters and NOT a verified live mandi price.`;
+      }
+    } catch (mlErr) {
+      console.warn('[geminiService] Agriculture ML prediction context error:', mlErr.message);
+    }
+  }
+
+  const systemContext = `${SYSTEM_PROMPT}\n\nContext:\n${historyContext}\n${intelContext}\n${weatherContext}${mlPredictionContext}${dialectContext ? '\n' + dialectContext : ''}`;
 
   const rotatedResult = await geminiRotator.executeWithRotation(systemContext, safeQuery);
 
   if (rotatedResult && rotatedResult.text) {
     try {
-      const cleanJson = rotatedResult.text.replace(/```json/g, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
+      let rawText = rotatedResult.text.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace = rawText.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        rawText = rawText.substring(firstBrace, lastBrace + 1);
+      }
+      const parsed = JSON.parse(rawText);
       return {
         ...parsed,
         apiKeyIndexUsed: rotatedResult.keyIndexUsed,
         modelUsed: rotatedResult.modelUsed
       };
     } catch (err) {
-      // Don't leak parse details to API response — just rethrow a clean message
-      throw new Error('AI response could not be parsed. Please try again.');
+      console.warn('[geminiService] JSON parse error, returning fallback structure:', err.message);
+      return {
+        short_answer_hi: rotatedResult.text.slice(0, 300),
+        short_answer_en: rotatedResult.text.slice(0, 300),
+        detailed_answer_hi: rotatedResult.text,
+        detailed_answer_en: rotatedResult.text,
+        confidence: 'MEDIUM',
+        follow_up_questions: ['पुनः प्रयास करें / Try again', 'मंडी भाव देखें / Check mandi rates'],
+        domain: 'AGRI_ADVISORY',
+        is_high_stakes: false,
+        risk_category: 'NONE',
+        trust_note: 'Direct AI Text Response',
+        actionable_steps: ['जानकारी की पुष्टि करें / Verify information.'],
+        distress_score: 0,
+        distress_level: 'LOW',
+        damage_impact_hi: 'सामान्य जानकारी।',
+        damage_impact_en: 'General advisory.',
+        apiKeyIndexUsed: rotatedResult.keyIndexUsed,
+        modelUsed: rotatedResult.modelUsed
+      };
     }
   }
 
-  throw new Error('AI service temporarily unavailable. Please try again in a moment.');
+  throw new Error('AI service temporarily unavailable.');
 }
 
 /**
